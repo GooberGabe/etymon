@@ -1,0 +1,153 @@
+{
+  "world": {
+    "width": 1000,
+    "height": 600,
+    "num_points": 2000,
+    "sea_level": 0.5,
+    "height_curve": {
+      "coefficient": 1.6,
+      "exponent": 1.9
+    }
+  },
+  "noise": {
+    "scale": 100,
+    "octaves": 6,
+    "persistence": 0.5,
+    "lacunarity": 2.0
+  },
+  "climate": {
+    "temperature": {
+      "scale": 200,
+      "octaves": 4,
+      "persistence": 0.6,
+      "lacunarity": 2.0
+    },
+    "rainfall": {
+      "scale": 150,
+      "octaves": 3,
+      "persistence": 0.4,
+      "lacunarity": 2.0
+    },
+    "pole_equator_distance": 0.6
+  },
+  "camera": {
+    "zoom_speed": 1.1,
+    "pan_speed": 5,
+    "min_zoom": 0.2,
+    "max_zoom": 4.0
+  },
+  "colors": {
+    "deep_water": "#024B86",
+    "shallow_water": "#8CF6FF",
+    "biomes": {
+      "ice": {
+        "name": "Ice Sheet",
+        "color": "#F0F8FF",
+        "conditions": {
+          "temperature_min": 0.0,
+          "temperature_max": 0.15
+        }
+      },
+      "tundra": {
+        "name": "Tundra",
+        "color": "#B8860B",
+        "conditions": {
+          "temperature_min": 0.15,
+          "temperature_max": 0.35,
+          "rainfall_min": 0.0,
+          "rainfall_max": 0.5
+        }
+      },
+      "taiga": {
+        "name": "Taiga Forest",
+        "color": "#2F4F2F",
+        "conditions": {
+          "temperature_min": 0.15,
+          "temperature_max": 0.35,
+          "rainfall_min": 0.5,
+          "rainfall_max": 1.0
+        }
+      },
+      "temperate_forest": {
+        "name": "Temperate Forest",
+        "color": "#228B22",
+        "conditions": {
+          "temperature_min": 0.35,
+          "temperature_max": 0.65,
+          "rainfall_min": 0.6,
+          "rainfall_max": 1.0
+        }
+      },
+      "plains": {
+        "name": "Grasslands",
+        "color": "#7CFC00",
+        "conditions": {
+          "temperature_min": 0.35,
+          "temperature_max": 0.65,
+          "rainfall_min": 0.3,
+          "rainfall_max": 0.6
+        }
+      },
+      "steppe": {
+        "name": "Steppe",
+        "color": "#DAA520",
+        "conditions": {
+          "temperature_min": 0.35,
+          "temperature_max": 0.65,
+          "rainfall_min": 0.15,
+          "rainfall_max": 0.3
+        }
+      },
+      "temperate_desert": {
+        "name": "Temperate Desert",
+        "color": "#DEB887",
+        "conditions": {
+          "temperature_min": 0.35,
+          "temperature_max": 0.65,
+          "rainfall_min": 0.0,
+          "rainfall_max": 0.15
+        }
+      },
+      "tropical_rainforest": {
+        "name": "Tropical Rainforest",
+        "color": "#006400",
+        "conditions": {
+          "temperature_min": 0.65,
+          "temperature_max": 1.0,
+          "rainfall_min": 0.7,
+          "rainfall_max": 1.0
+        }
+      },
+      "savanna": {
+        "name": "Savanna",
+        "color": "#ADFF2F",
+        "conditions": {
+          "temperature_min": 0.65,
+          "temperature_max": 1.0,
+          "rainfall_min": 0.25,
+          "rainfall_max": 0.7
+        }
+      },
+      "hot_desert": {
+        "name": "Hot Desert",
+        "color": "#F4A460",
+        "conditions": {
+          "temperature_min": 0.65,
+          "temperature_max": 1.0,
+          "rainfall_min": 0.0,
+          "rainfall_max": 0.25
+        }
+      },
+      "alpine": {
+        "name": "Alpine Meadow",
+        "color": "#9370DB",
+        "conditions": {
+          "temperature_min": 0.25,
+          "temperature_max": 0.45,
+          "rainfall_min": 0.4,
+          "rainfall_max": 0.8
+        }
+      }
+    }
+  }
+}
