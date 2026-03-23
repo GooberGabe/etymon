@@ -122,10 +122,17 @@
     {"phonetic_form": "selwan", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "aʐakan", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "nacci", "gloss": "personal_name_f", "category": "personal_name"},
+    {"phonetic_form": "veːŋkaʈan", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "palani", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "miːnaːkʂi", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "naaŋku", "gloss": "four", "category": "number"},
     {"phonetic_form": "aːɻu", "gloss": "six", "category": "number"},
     {"phonetic_form": "eːʐu", "gloss": "seven", "category": "number"},
     {"phonetic_form": "eːʈʈu", "gloss": "eight", "category": "number"},
-    {"phonetic_form": "onpatu", "gloss": "nine", "category": "number"}
+    {"phonetic_form": "onpatu", "gloss": "nine", "category": "number"},
+    {"phonetic_form": "ʋaɖakku", "gloss": "north", "category": "direction"},
+    {"phonetic_form": "teɳ", "gloss": "south", "category": "direction"},
+    {"phonetic_form": "kiɭakku", "gloss": "east", "category": "direction"},
+    {"phonetic_form": "meɭakku", "gloss": "west", "category": "direction"}
   ]
 }

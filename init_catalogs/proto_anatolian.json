@@ -72,6 +72,9 @@
     {"phonetic_form": "muwatalli", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "ḫattušili", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "šuppiluliuma", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "arnuwanda", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "zidanta", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "piyamaradu", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "aš", "gloss": "one", "category": "number"},
     {"phonetic_form": "da", "gloss": "two", "category": "number"},
     {"phonetic_form": "tri", "gloss": "three", "category": "number"},
@@ -92,6 +95,10 @@
     {"phonetic_form": "tazzagašti", "gloss": "lightning", "category": "natural_world"},
     {"phonetic_form": "tetḫiša", "gloss": "thunder", "category": "natural_world"},
     {"phonetic_form": "marri", "gloss": "fog", "category": "natural_world"},
-    {"phonetic_form": "šarlaimi", "gloss": "frost", "category": "natural_world"}
+    {"phonetic_form": "šarlaimi", "gloss": "frost", "category": "natural_world"},
+    {"phonetic_form": "narta", "gloss": "north", "category": "direction"},
+    {"phonetic_form": "suta", "gloss": "south", "category": "direction"},
+    {"phonetic_form": "astara", "gloss": "east", "category": "direction"},
+    {"phonetic_form": "wastara", "gloss": "west", "category": "direction"}
   ]
 }

@@ -1,0 +1,126 @@
+{
+  "colors": {
+    "deep_water": "#024B86",
+    "shallow_water": "#8CF6FF",
+    "biomes": {
+      "ice": {
+        "name": "Ice",
+        "color": "#D0E0F0",
+        "conditions": {
+          "temperature_max": 0.1
+        }
+      },
+      "tundra": {
+        "name": "Tundra",
+        "color": "#A8A8A8",
+        "conditions": {
+          "temperature_max": 0.3,
+          "rainfall_max": 0.5
+        }
+      },
+      "taiga": {
+        "name": "Taiga",
+        "color": "#4A7C59",
+        "conditions": {
+          "temperature_max": 0.3,
+          "rainfall_min": 0.5
+        }
+      },
+      "temperate_forest": {
+        "name": "Temperate Forest",
+        "color": "#5A8A5A",
+        "conditions": {
+          "temperature_min": 0.3,
+          "temperature_max": 0.65,
+          "rainfall_min": 0.65
+        }
+      },
+      "plains": {
+        "name": "Grasslands",
+        "color": "#7A9A4A",
+        "conditions": {
+          "temperature_min": 0.3,
+          "temperature_max": 0.65,
+          "rainfall_min": 0.4,
+          "rainfall_max": 0.65
+        }
+      },
+      "steppe": {
+        "name": "Steppe",
+        "color": "#9A9A5A",
+        "conditions": {
+          "temperature_min": 0.3,
+          "temperature_max": 0.65,
+          "rainfall_max": 0.4
+        }
+      },
+      "tropical_rainforest": {
+        "name": "Tropical Rainforest",
+        "color": "#2A5A2A",
+        "conditions": {
+          "temperature_min": 0.65,
+          "rainfall_min": 0.7
+        }
+      },
+      "savanna": {
+        "name": "Savanna",
+        "color": "#B8A55A",
+        "conditions": {
+          "temperature_min": 0.65,
+          "rainfall_min": 0.4,
+          "rainfall_max": 0.7
+        }
+      },
+      "hot_desert": {
+        "name": "Hot Desert",
+        "color": "#C4A67A",
+        "conditions": {
+          "temperature_min": 0.6,
+          "rainfall_max": 0.4
+        }
+      }
+    }
+  },
+  "camera": {
+    "pan_speed": 1.5,
+    "zoom_speed": 0.1,
+    "min_zoom": 0.2,
+    "max_zoom": 4.0
+  },
+  "rendering": {
+    "fps": 60,
+    "window_title": "Etymon - World Generator",
+    "polity_text": {
+      "font_size": 19,
+      "min_font_size": 9,
+      "text_color": [255, 255, 255],
+      "outline_color": [0, 0, 0],
+      "show_names": true,
+      "show_gloss": true,
+      "gloss_font_scale": 0.7,
+      "gloss_offset": 0.65,
+      "hide_zoom_threshold": 3.5,
+      "min_visible_tiles": 1,
+      "min_visible_ratio": 0.0,
+      "zoom_visibility_ratio": 0.7,
+      "zoom_visibility_power": 1.5,
+      "zoom_visibility_reference_zoom": 1.5
+    },
+    "population_centers": {
+      "dot_color": [255, 215, 0],
+      "dot_size": 4,
+      "font_size": 15,
+      "text_color": [255, 255, 255],
+      "outline_color": [0, 0, 0],
+      "show_names": true,
+      "min_zoom_for_names": 3.0
+    },
+    "rivers": {
+      "color": [142, 195, 240],
+      "min_width": 0.7,
+      "max_width": 3.2,
+      "width_power": 0.55,
+      "max_flux_for_width": 1.1
+    }
+  }
+}

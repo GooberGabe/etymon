@@ -72,6 +72,9 @@
     {"phonetic_form": "vladь", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "borisъ", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "miroslavъ", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "dragomirъ", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "jaroslavъ", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "milēna", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "ains", "gloss": "one", "category": "number"},
     {"phonetic_form": "dvau", "gloss": "two", "category": "number"},
     {"phonetic_form": "trejes", "gloss": "three", "category": "number"},
@@ -92,6 +95,10 @@
     {"phonetic_form": "mьlnija", "gloss": "lightning", "category": "natural_world"},
     {"phonetic_form": "gromъ", "gloss": "thunder", "category": "natural_world"},
     {"phonetic_form": "sněgъ", "gloss": "snow", "category": "natural_world"},
-    {"phonetic_form": "mьgla", "gloss": "fog", "category": "natural_world"}
+    {"phonetic_form": "mьgla", "gloss": "fog", "category": "natural_world"},
+    {"phonetic_form": "severъ", "gloss": "north", "category": "direction"},
+    {"phonetic_form": "jugъ", "gloss": "south", "category": "direction"},
+    {"phonetic_form": "vostokъ", "gloss": "east", "category": "direction"},
+    {"phonetic_form": "zapadъ", "gloss": "west", "category": "direction"}
   ]
 }

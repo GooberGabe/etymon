@@ -1,0 +1,30 @@
+{
+  "ui": {
+    "map_mode_panel": {
+      "enabled": true,
+      "position": {
+        "x": 10,
+        "y": -190
+      },
+      "width": 140,
+      "height": 180,
+      "background_color": [0, 0, 0, 180],
+      "border_color": [255, 255, 255],
+      "title_color": [255, 255, 255],
+      "text_color": [200, 200, 200],
+      "selected_color": [100, 150, 255],
+      "font_size": 18,
+      "modes": [
+        "biomes",
+        "elevation",
+        "regions",
+        "development",
+        "population",
+        "control"
+      ]
+    },
+    "tooltips": {
+      "hover_delay_seconds": 0.5
+    }
+  }
+}

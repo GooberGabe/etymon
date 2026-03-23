@@ -125,10 +125,17 @@
     {"phonetic_form": "mɛɹi", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "ɛlɪzəbəθ", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "ændʒələ", "gloss": "personal_name_f", "category": "personal_name"},
+    {"phonetic_form": "dʒɔɹdʒ", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "sæmjuəl", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "səɹɑ", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "fɔɹ", "gloss": "four", "category": "number"},
     {"phonetic_form": "sɪks", "gloss": "six", "category": "number"},
     {"phonetic_form": "sɛvn̩", "gloss": "seven", "category": "number"},
     {"phonetic_form": "eɪt", "gloss": "eight", "category": "number"},
-    {"phonetic_form": "naɪn", "gloss": "nine", "category": "number"}
+    {"phonetic_form": "naɪn", "gloss": "nine", "category": "number"},
+    {"phonetic_form": "nɔɹθ", "gloss": "north", "category": "direction"},
+    {"phonetic_form": "saʊθ", "gloss": "south", "category": "direction"},
+    {"phonetic_form": "ist", "gloss": "east", "category": "direction"},
+    {"phonetic_form": "wɛst", "gloss": "west", "category": "direction"}
   ]
 }

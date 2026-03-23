@@ -79,6 +79,9 @@
     {"phonetic_form": "wulfaz", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "hroþigastiz", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "þeudareiks", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "frithuwulfaz", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "gundaharjaz", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "aldrūnō", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "ainaz", "gloss": "one", "category": "number"},
     {"phonetic_form": "twai", "gloss": "two", "category": "number"},
     {"phonetic_form": "þrīz", "gloss": "three", "category": "number"},
@@ -99,6 +102,10 @@
     {"phonetic_form": "þunraz", "gloss": "thunder", "category": "natural_world"},
     {"phonetic_form": "ligustuz", "gloss": "lightning", "category": "natural_world"},
     {"phonetic_form": "snaiwaz", "gloss": "snow", "category": "natural_world"},
-    {"phonetic_form": "mistaz", "gloss": "fog", "category": "natural_world"}
+    {"phonetic_form": "mistaz", "gloss": "fog", "category": "natural_world"},
+    {"phonetic_form": "nurþaz", "gloss": "north", "category": "direction"},
+    {"phonetic_form": "sunþaz", "gloss": "south", "category": "direction"},
+    {"phonetic_form": "austraz", "gloss": "east", "category": "direction"},
+    {"phonetic_form": "westuz", "gloss": "west", "category": "direction"}
   ]
 }

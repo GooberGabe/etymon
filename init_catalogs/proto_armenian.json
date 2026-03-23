@@ -72,6 +72,9 @@
     {"phonetic_form": "tigran", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "aram", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "vahagn", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "sanasar", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "tiɾidat", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "anahit", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "mi", "gloss": "one", "category": "number"},
     {"phonetic_form": "erku", "gloss": "two", "category": "number"},
     {"phonetic_form": "erekʰ", "gloss": "three", "category": "number"},
@@ -92,6 +95,10 @@
     {"phonetic_form": "kołmn", "gloss": "lightning", "category": "natural_world"},
     {"phonetic_form": "orot", "gloss": "thunder", "category": "natural_world"},
     {"phonetic_form": "dʒyuwr", "gloss": "snow", "category": "natural_world"},
-    {"phonetic_form": "mist", "gloss": "fog", "category": "natural_world"}
+    {"phonetic_form": "mist", "gloss": "fog", "category": "natural_world"},
+    {"phonetic_form": "hiws", "gloss": "north", "category": "direction"},
+    {"phonetic_form": "arev", "gloss": "south", "category": "direction"},
+    {"phonetic_form": "arevel", "gloss": "east", "category": "direction"},
+    {"phonetic_form": "arevmid", "gloss": "west", "category": "direction"}
   ]
 }

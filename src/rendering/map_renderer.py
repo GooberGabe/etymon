@@ -450,9 +450,46 @@ class MapRenderer:
             # First, calculate max population for normalization
             max_pop = max((t.population for t in world.tiles if not t.is_water), default=1)
             if max_pop > 0:
-                pop_ratio = min(1.0, tile.population / max_pop)
+                linear_ratio = min(1.0, tile.population / max_pop)
             else:
-                pop_ratio = 0.0
+                linear_ratio = 0.0
+            # Dual-curve mapping: gentle lift for low end, stretch for high end
+            low_curve_exponent = self.config.get('rendering.population_map.low_curve_exponent', 0.45) if self.config else 0.45
+            high_curve_exponent = self.config.get('rendering.population_map.high_curve_exponent', 1.25) if self.config else 1.25
+            curve_midpoint = self.config.get('rendering.population_map.curve_midpoint', 0.4) if self.config else 0.4
+            use_log_curve = self.config.get('rendering.population_map.use_log_curve', True) if self.config else True
+            min_floor = self.config.get('rendering.population_map.low_end_floor', 0.0) if self.config else 0.0
+            try:
+                low_curve_exponent = max(0.05, float(low_curve_exponent))
+            except (TypeError, ValueError):
+                low_curve_exponent = 0.45
+            try:
+                high_curve_exponent = max(0.1, float(high_curve_exponent))
+            except (TypeError, ValueError):
+                high_curve_exponent = 1.25
+            try:
+                curve_midpoint = min(0.95, max(0.05, float(curve_midpoint)))
+            except (TypeError, ValueError):
+                curve_midpoint = 0.4
+            try:
+                min_floor = max(0.0, min(0.25, float(min_floor)))
+            except (TypeError, ValueError):
+                min_floor = 0.0
+
+            pop_ratio = linear_ratio
+            if use_log_curve and max_pop > 0:
+                log_ratio = math.log1p(tile.population) / math.log1p(max_pop)
+                pop_ratio = max(pop_ratio, log_ratio)
+
+            if pop_ratio < curve_midpoint:
+                pop_ratio = pow(pop_ratio, low_curve_exponent)
+            else:
+                # Remap upper band to [0,1] before applying high exponent to create separation at the top
+                upper_span = max(1e-6, 1.0 - curve_midpoint)
+                upper_ratio = (pop_ratio - curve_midpoint) / upper_span
+                pop_ratio = curve_midpoint + pow(upper_ratio, high_curve_exponent) * upper_span
+
+            pop_ratio = min(1.0, max(min_floor, pop_ratio))
             
             low_pop_color = (34, 139, 34)   # Forest green
             high_pop_color = (220, 20, 60)  # Crimson
@@ -1272,23 +1309,50 @@ class MapRenderer:
             return
         
         # Check if text rendering is enabled
-        show_names = self.config.get('rendering.polity_text.show_names', True)
+        polity_text_cfg = self.config.get('rendering.polity_text', {}) if self.config else {}
+        show_names = polity_text_cfg.get('show_names', True)
+        show_gloss = polity_text_cfg.get('show_gloss', False)
+        gloss_font_scale = max(0.1, float(polity_text_cfg.get('gloss_font_scale', 0.7)))
+        gloss_offset = float(polity_text_cfg.get('gloss_offset', 0.65))
         if not show_names:
             return
         
-        font_size = self.config.get('rendering.polity_text.font_size', 24)
-        text_color = tuple(self.config.get('rendering.polity_text.text_color', [255, 255, 255]))
-        outline_color = tuple(self.config.get('rendering.polity_text.outline_color', [0, 0, 0]))
-        hide_zoom_threshold = self.config.get('rendering.polity_text.hide_zoom_threshold', 3.0)
+        font_size = polity_text_cfg.get('font_size', 24)
+        text_color = tuple(polity_text_cfg.get('text_color', [255, 255, 255]))
+        outline_color = tuple(polity_text_cfg.get('outline_color', [0, 0, 0]))
+        hide_zoom_threshold = polity_text_cfg.get('hide_zoom_threshold', 3.0)
         if self.zoom >= hide_zoom_threshold:
             return
 
         zoom_scale = max(0.5, min(1.5, self.zoom))
-        max_polity_tiles = max((len(polity.tile_indices) for polity in world.polities if polity.tile_indices), default=1)
-        min_font_size = self.config.get('rendering.polity_text.min_font_size', 10)
+        max_polity_tiles = max(
+            (len(polity.tile_indices) for polity in world.polities if polity and polity.tile_indices),
+            default=1,
+        )
+        min_font_size = polity_text_cfg.get('min_font_size', 10)
+
+        min_visible_tiles = max(0, int(polity_text_cfg.get('min_visible_tiles', 1)))
+        min_visible_ratio = max(0.0, float(polity_text_cfg.get('min_visible_ratio', 0.0)))
+        zoom_visibility_ratio = max(0.0, float(polity_text_cfg.get('zoom_visibility_ratio', 0.05)))
+        zoom_visibility_power = max(0.0, float(polity_text_cfg.get('zoom_visibility_power', 1.0)))
+        reference_zoom = max(0.05, float(polity_text_cfg.get('zoom_visibility_reference_zoom', 1.0)))
+
+        safe_zoom = max(0.01, self.zoom)
+        zoom_out_ratio = max(0.0, (reference_zoom / safe_zoom) - 1.0)
+        zoom_ratio_bonus = 0.0
+        if zoom_out_ratio > 0.0 and zoom_visibility_ratio > 0.0:
+            exponent = zoom_visibility_power if zoom_visibility_power > 0 else 1.0
+            zoom_ratio_bonus = zoom_visibility_ratio * (zoom_out_ratio ** exponent)
+        tile_ratio_threshold = min_visible_ratio + zoom_ratio_bonus
+        ratio_tile_requirement = 0
+        if max_polity_tiles > 0:
+            ratio_tile_requirement = int(math.ceil(tile_ratio_threshold * max_polity_tiles))
+        visibility_tile_threshold = max(min_visible_tiles, ratio_tile_requirement)
         
         for polity in world.polities:
-            if not polity.tile_indices:
+            if polity is None or not polity.tile_indices:
+                continue
+            if len(polity.tile_indices) < visibility_tile_threshold:
                 continue
             polity_size_ratio = len(polity.tile_indices) / max_polity_tiles if max_polity_tiles > 0 else 0
             size_factor = 0.6 + 0.6 * math.sqrt(max(0.0, polity_size_ratio))
@@ -1319,6 +1383,28 @@ class MapRenderer:
                     
                     # Draw main text on top
                     self.screen.blit(text_surface, text_rect)
+
+                    if show_gloss:
+                        gloss_text = getattr(polity, 'name_gloss', None)
+                        if gloss_text:
+                            gloss_text = f"\"{gloss_text}\""
+                            gloss_font_size = max(min_font_size, int(dynamic_font_size * gloss_font_scale))
+                            gloss_font = pygame.font.Font(None, gloss_font_size)
+                            gloss_surface = gloss_font.render(gloss_text, True, text_color)
+                            gloss_rect = gloss_surface.get_rect(center=(
+                                screen_pos[0],
+                                screen_pos[1] + int(dynamic_font_size * gloss_offset)
+                            ))
+                            gloss_outline = gloss_font.render(gloss_text, True, outline_color)
+                            for dx in [-1, 0, 1]:
+                                for dy in [-1, 0, 1]:
+                                    if dx == 0 and dy == 0:
+                                        continue
+                                    outline_rect = gloss_outline.get_rect(
+                                        center=(gloss_rect.centerx + dx, gloss_rect.centery + dy)
+                                    )
+                                    self.screen.blit(gloss_outline, outline_rect)
+                            self.screen.blit(gloss_surface, gloss_rect)
 
     def render_region_labels(self, world: World) -> None:
         """Render overlay labels for regions while in region view mode."""
@@ -1460,8 +1546,16 @@ class MapRenderer:
         font_size = self.config.get('rendering.population_centers.font_size', 12)
         text_color = tuple(self.config.get('rendering.population_centers.text_color', [255, 255, 255]))
         outline_color = tuple(self.config.get('rendering.population_centers.outline_color', [0, 0, 0]))
+        capital_tiles = self._collect_capital_tiles(world)
+        capital_color = tuple(self.config.get('rendering.population_centers.capital_color', list(dot_color)))
+        capital_size = int(self.config.get('rendering.population_centers.capital_size', max(6, int(dot_size) + 2)))
+        capital_outline_color = tuple(self.config.get('rendering.population_centers.capital_outline_color', list(outline_color)))
+        capital_outline_width = int(self.config.get('rendering.population_centers.capital_outline_width', 1))
+        star_points = max(4, int(self.config.get('rendering.population_centers.capital_star_points', 5)))
+        star_inner_ratio = float(self.config.get('rendering.population_centers.capital_star_inner_ratio', 0.5))
         
         font = pygame.font.Font(None, font_size)
+        rendered_capital_tiles: set[int] = set()
         
         for center in world.population_centers:
             tile_idx = center.tile_index
@@ -1473,18 +1567,29 @@ class MapRenderer:
             
             # Only render if position is on screen
             if self._is_point_on_screen(screen_pos):
-                # Draw the dot
-                pygame.draw.circle(self.screen, dot_color, screen_pos, dot_size)
-                
+                # Draw capital stars to distinguish them from normal settlements
+                if tile_idx in capital_tiles:
+                    if tile_idx in rendered_capital_tiles:
+                        continue
+                    rendered_capital_tiles.add(tile_idx)
+                    self._draw_star(
+                        screen_pos,
+                        radius=capital_size,
+                        color=capital_color,
+                        outline_color=capital_outline_color,
+                        outline_width=capital_outline_width,
+                        points=star_points,
+                        inner_ratio=star_inner_ratio,
+                    )
+                else:
+                    pygame.draw.circle(self.screen, dot_color, screen_pos, dot_size)
+
                 # Draw name if enabled and zoomed in enough
                 if show_names and self.zoom >= min_zoom_for_names:
-                    # Create text surface
                     text_surface = font.render(center.name, True, text_color)
-                    # Position text slightly below the dot
                     text_pos = (screen_pos[0], screen_pos[1] + dot_size + 8)
                     text_rect = text_surface.get_rect(center=text_pos)
-                    
-                    # Draw outline by rendering black text at offset positions
+
                     outline_surface = font.render(center.name, True, outline_color)
                     for dx in [-1, 0, 1]:
                         for dy in [-1, 0, 1]:
@@ -1493,9 +1598,55 @@ class MapRenderer:
                                     center=(text_pos[0] + dx, text_pos[1] + dy)
                                 )
                                 self.screen.blit(outline_surface, outline_rect)
-                    
-                    # Draw main text on top
+
                     self.screen.blit(text_surface, text_rect)
+
+    def _collect_capital_tiles(self, world: World) -> set[int]:
+        """Return tile indices for active polities' capitals."""
+        capitals: set[int] = set()
+        if not hasattr(world, 'polities'):
+            return capitals
+        total_tiles = len(getattr(world, 'tiles', []))
+        for polity in world.polities:
+            if polity is None or not getattr(polity, 'is_active', True):
+                continue
+            tile_idx = getattr(polity, 'capital_tile_index', -1)
+            if isinstance(tile_idx, int) and 0 <= tile_idx < total_tiles:
+                capitals.add(tile_idx)
+        return capitals
+
+    def _draw_star(
+        self,
+        center: Tuple[int, int],
+        radius: int,
+        color: Tuple[int, int, int],
+        outline_color: Tuple[int, int, int],
+        outline_width: int,
+        points: int = 5,
+        inner_ratio: float = 0.5,
+    ) -> None:
+        """Draw a simple star polygon centered at the given point."""
+        safe_points = max(2, int(points))
+        outer_r = max(1, int(radius))
+        inner_r = max(1, int(outer_r * max(0.05, min(0.95, inner_ratio))))
+        angle_step = math.pi / safe_points
+        start_angle = -math.pi / 2
+        vertices: List[Tuple[int, int]] = []
+        for i in range(safe_points * 2):
+            r = outer_r if i % 2 == 0 else inner_r
+            angle = start_angle + i * angle_step
+            vertices.append(
+                (
+                    int(center[0] + math.cos(angle) * r),
+                    int(center[1] + math.sin(angle) * r),
+                )
+            )
+        try:
+            pygame.draw.polygon(self.screen, color, vertices)
+            if outline_width > 0:
+                pygame.draw.polygon(self.screen, outline_color, vertices, outline_width)
+        except Exception:
+            return
     
     def _find_polity_text_position(self, world: World, polity) -> Optional[Tuple[float, float]]:
         """Find the optimal position to place polity name text.

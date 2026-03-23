@@ -66,6 +66,8 @@ def transform_language(
     *,
     time_depth: int = 1,
     substrate_typology: Typology | None = None,
+    substrate_catalog: LanguageCatalog | None = None,
+    contact_context: Dict[str, object] | None = None,
     influence_strength: float = 0.3,
     peer_catalog: LanguageCatalog | None = None,
     bidirectional_weight: float = 0.5,
@@ -89,27 +91,130 @@ def transform_language(
         )
 
     if mode == "substrate":
-        if substrate_typology is None:
+        effective_substrate = substrate_catalog.typology if substrate_catalog else substrate_typology
+        if effective_substrate is None:
             raise ValueError("substrate_typology is required for substrate transformation")
+
+        ctx = contact_context or {}
+        primary_share = float(ctx.get("primary_share", 0.0))
+        substrate_share = float(ctx.get("substrate_share", 0.0))
+        dominance_ratio = float(ctx.get("dominance_ratio", 0.5))  # portion held by primary vs total
+        primary_generation = int(ctx.get("primary_generation", input_catalog.metadata.get("generation", 1)))
+        substrate_generation = int(ctx.get("substrate_generation", (substrate_catalog.metadata if substrate_catalog else {}).get("generation", 1)))
+        primary_has_polity = ctx.get("primary_has_polity")
+        substrate_has_polity = ctx.get("substrate_has_polity")
+
+        # Start from caller influence; adjust based on situational dominance/age/polity presence
+        modifier = 1.0
+        if dominance_ratio >= 0.7:
+            modifier *= 0.85  # dominant primary resists substrate spread
+        elif dominance_ratio <= 0.55:
+            modifier *= 1.05  # closer to parity, a bit more substrate bleed
+
+        if substrate_generation < primary_generation:
+            modifier *= 1.1  # older substrate carries prestige/gravitas
+        elif substrate_generation > primary_generation + 1:
+            modifier *= 0.95  # notably younger substrate loses ground
+
+        if primary_has_polity is False and substrate_has_polity is True:
+            modifier *= 1.05  # substrate tied to a polity has more leverage
+        elif primary_has_polity is True and substrate_has_polity is False:
+            modifier *= 0.95  # primary polity dampens substrate
+
+        effective_influence = max(0.05, min(0.95, influence_strength * modifier))
+
         blended = blend_typologies(
             primary_typology=input_catalog.typology,
-            influence_typology=substrate_typology,
-            influence_weight=influence_strength,
+            influence_typology=effective_substrate,
+            influence_weight=effective_influence,
             rng=rng,
             substrate_mode=True,
         )
-        # For substrate influence, we change the typology but don't apply sound changes
-        # since substrate effects are synchronic contact phenomena, not historical evolution
-        return LanguageCatalog(
+
+
+        def borrow_words(primary, substrate, influence, ctx, rng):
+            print("[DEBUG] Starting lexical borrowing...")
+            if substrate:
+                print(f"[DEBUG] Substrate catalog: {getattr(substrate, 'name', None)} | Words: {len(getattr(substrate, 'words', []))}")
+                if getattr(substrate, 'words', []):
+                    print(f"[DEBUG] Sample substrate word: {substrate.words[0].gloss} [{substrate.words[0].category}]: {substrate.words[0].phonetic_form}")
+            primary_words = list(primary.words)
+            substrate_words = list(substrate.words) if substrate else []
+            if not substrate_words:
+                print("[DEBUG] No substrate words available.")
+                return primary_words
+            from collections import defaultdict
+            cat_to_words = defaultdict(list)
+            for w in substrate_words:
+                cat_to_words[(w.category or "uncategorized")].append(w)
+            polity_bias = ctx.get("primary_has_polity") is True and ctx.get("substrate_has_polity") is False
+            military_cats = {"military", "warfare", "government", "administration"}
+            basic_cats = {"body", "kinship", "nature", "everyday", "basic"}
+            borrow_probs = {}
+            for cat in cat_to_words:
+                if polity_bias and cat.lower() in military_cats:
+                    borrow_probs[cat] = min(1.0, influence + 0.4)
+                elif not polity_bias and cat.lower() in basic_cats:
+                    borrow_probs[cat] = min(1.0, influence + 0.2)
+                else:
+                    borrow_probs[cat] = influence
+            new_words = []
+            used_substrate_ids = set()
+            for w in primary_words:
+                cat = w.category or "uncategorized"
+                candidates = [sw for sw in cat_to_words[cat] if sw.gloss == w.gloss and id(sw) not in used_substrate_ids]
+                if not candidates:
+                    candidates = [sw for sw in cat_to_words[cat] if id(sw) not in used_substrate_ids]
+                prob = borrow_probs.get(cat, influence)
+                # Make replacement borrowing less aggressive: use influence squared
+                replacement_prob = prob ** 2
+                if candidates and rng.random() < replacement_prob:
+                    chosen = rng.choice(candidates)
+                    used_substrate_ids.add(id(chosen))
+                    borrowed = chosen.clone(etymology=f"borrowed_from_{substrate.name}_DEBUG")
+                    print(f"[DEBUG] Borrowed (replacement): {borrowed.gloss} [{borrowed.category}] -> {borrowed.phonetic_form}")
+                    new_words.append(borrowed)
+                else:
+                    new_words.append(w.clone())
+            supplement_prob = min(0.2, influence)
+            for sw in substrate_words:
+                if id(sw) not in used_substrate_ids and rng.random() < supplement_prob:
+                    borrowed = sw.clone(etymology=f"borrowed_from_{substrate.name}_DEBUG")
+                    print(f"[DEBUG] Borrowed (supplement): {borrowed.gloss} [{borrowed.category}] -> {borrowed.phonetic_form}")
+                    new_words.append(borrowed)
+            borrowed_count = len([w for w in new_words if getattr(w, 'etymology', None) and 'borrowed_from_' in str(w.etymology)])
+            print(f"[DEBUG] Total borrowed words: {borrowed_count}")
+            return new_words
+
+        # Perform lexical borrowing
+        new_words = borrow_words(input_catalog, substrate_catalog, effective_influence, ctx, rng)
+
+        # Apply blended sound changes to the new lexicon
+        from src.linguistics.models import LanguageCatalog as LC
+        temp_catalog = LC(
             name=_generate_language_name(input_catalog.metadata, input_catalog.name),
-            words=[word.clone() for word in input_catalog.words],  # Keep original words
+            words=new_words,
             typology=blended,
             metadata=dict(input_catalog.metadata, **{
                 "transformation": "substrate",
-                "influence_strength": influence_strength,
+                "influence_strength_requested": influence_strength,
+                "influence_strength_effective": effective_influence,
+                "contact_bias": {
+                    "primary_share": primary_share,
+                    "substrate_share": substrate_share,
+                    "dominance_ratio": dominance_ratio,
+                    "primary_generation": primary_generation,
+                    "substrate_generation": substrate_generation,
+                    "primary_has_polity": primary_has_polity,
+                    "substrate_has_polity": substrate_has_polity,
+                    "modifier": modifier,
+                },
                 "generation": input_catalog.metadata.get("generation", 1) + 1,
             }),
         )
+        # Use the built-in apply_sound_changes to apply all blended sound changes
+        final_catalog = temp_catalog.apply_sound_changes(rng=rng, generation=input_catalog.metadata.get("generation", 1) + 1)
+        return final_catalog
 
     if mode == "adstratum":
         if peer_catalog is None:
@@ -150,8 +255,10 @@ def transform_language(
 
 def apply_substrate_influence(
     superstrate_catalog: LanguageCatalog,
-    substrate_typology: Typology,
+    substrate_typology: Typology | None = None,
     *,
+    contact_context: Dict[str, object] | None = None,
+    substrate_catalog: LanguageCatalog | None = None,
     influence_strength: float = 0.2,
     rng: Optional[random.Random] = None,
 ) -> LanguageCatalog:
@@ -161,6 +268,8 @@ def apply_substrate_influence(
         superstrate_catalog,
         transformation_type="substrate",
         substrate_typology=substrate_typology,
+        substrate_catalog=substrate_catalog,
+        contact_context=contact_context,
         influence_strength=influence_strength,
         rng=rng,
     )

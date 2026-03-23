@@ -72,6 +72,9 @@
     {"phonetic_form": "bardh", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "gjon", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "leka", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "arbɛn", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "skəndeɾ", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "tɛfta", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "një", "gloss": "one", "category": "number"},
     {"phonetic_form": "du", "gloss": "two", "category": "number"},
     {"phonetic_form": "tri", "gloss": "three", "category": "number"},
@@ -92,6 +95,10 @@
     {"phonetic_form": "rrufejë", "gloss": "lightning", "category": "natural_world"},
     {"phonetic_form": "bubullimë", "gloss": "thunder", "category": "natural_world"},
     {"phonetic_form": "borë", "gloss": "snow", "category": "natural_world"},
-    {"phonetic_form": "dëborë", "gloss": "snowfall", "category": "natural_world"}
+    {"phonetic_form": "dëborë", "gloss": "snowfall", "category": "natural_world"},
+    {"phonetic_form": "veɾi", "gloss": "north", "category": "direction"},
+    {"phonetic_form": "juɡ", "gloss": "south", "category": "direction"},
+    {"phonetic_form": "lindjɛ", "gloss": "east", "category": "direction"},
+    {"phonetic_form": "peɾəndim", "gloss": "west", "category": "direction"}
   ]
 }

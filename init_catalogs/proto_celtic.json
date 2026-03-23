@@ -72,6 +72,9 @@
     {"phonetic_form": "brennos", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "karatak", "gloss": "personal_name_m", "category": "personal_name"},
     {"phonetic_form": "dumnorix", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "lugotoriks", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "segomaros", "gloss": "personal_name_m", "category": "personal_name"},
+    {"phonetic_form": "nerthā", "gloss": "personal_name_f", "category": "personal_name"},
     {"phonetic_form": "oinos", "gloss": "one", "category": "number"},
     {"phonetic_form": "dau", "gloss": "two", "category": "number"},
     {"phonetic_form": "treis", "gloss": "three", "category": "number"},
@@ -92,6 +95,10 @@
     {"phonetic_form": "taranon", "gloss": "thunder", "category": "natural_world"},
     {"phonetic_form": "snigʷs", "gloss": "snow", "category": "natural_world"},
     {"phonetic_form": "niɣlis", "gloss": "fog", "category": "natural_world"},
-    {"phonetic_form": "aimos", "gloss": "frost", "category": "natural_world"}
+    {"phonetic_form": "aimos", "gloss": "frost", "category": "natural_world"},
+    {"phonetic_form": "artos", "gloss": "north", "category": "direction"},
+    {"phonetic_form": "deksos", "gloss": "south", "category": "direction"},
+    {"phonetic_form": "ausos", "gloss": "east", "category": "direction"},
+    {"phonetic_form": "uesnos", "gloss": "west", "category": "direction"}
   ]
 }

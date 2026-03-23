@@ -51,27 +51,63 @@ def test_substrate_blending(
         primary,
         transformation_type="substrate",
         substrate_typology=substrate.typology,
+        substrate_catalog=substrate,
         influence_strength=influence_strength,
         rng=rng,
     )
 
-    lines.extend([
-        f"AFTER SUBSTRATE BLENDING:",
-        f"Result: {format_catalog_summary(blended, 5)}",
-        "",
-        f"Typology comparison:",
-        f"  Primary consonants: {len(primary.typology.consonants)} types",
-        f"  Substrate consonants: {len(substrate.typology.consonants)} types",
-        f"  Blended consonants: {len(blended.typology.consonants)} types",
-        "",
-        f"  Primary syllable patterns: {primary.typology.syllable_patterns[:3]}",
-        f"  Substrate syllable patterns: {substrate.typology.syllable_patterns[:3]}",
-        f"  Blended syllable patterns: {blended.typology.syllable_patterns[:3]}",
-        "",
-        f"  Primary max onset complexity: {primary.typology.max_onset_complexity}",
-        f"  Substrate max onset complexity: {substrate.typology.max_onset_complexity}",
-        f"  Blended max onset complexity: {blended.typology.max_onset_complexity}",
-    ])
+
+    import json
+    lines.append(f"AFTER SUBSTRATE BLENDING:")
+    lines.append(f"Result: {format_catalog_summary(blended, 5)}")
+    lines.append("")
+
+    # Show borrowed words (including all supplements) and percentage
+    borrowed = []
+    for w in getattr(blended, 'words', []):
+        ety = getattr(w, 'etymology', None)
+        if ety and f"borrowed_from_{substrate.name}" in str(ety):
+            borrowed.append(w)
+    total_words = len(getattr(blended, 'words', []))
+    percent_borrowed = (len(borrowed) / total_words * 100) if total_words else 0
+    lines.append(f"DEBUG: {len(borrowed)} of {total_words} words ({percent_borrowed:.1f}%) were borrowed from the substrate.")
+    if borrowed:
+        lines.append(f"Words borrowed from substrate ({substrate.name}):")
+        for w in borrowed:
+            lines.append(f"  {w.gloss} [{w.category}]: {w.phonetic_form}")
+        lines.append("")
+    else:
+        lines.append("No words were borrowed from the substrate.")
+        lines.append("")
+
+    # Show words changed by sound changes or phonotactic repair
+    changed = [w for w in blended.words if getattr(w, 'historical_forms', None)]
+    if changed:
+        lines.append("Words changed by sound changes or phonotactic repair:")
+        for w in changed:
+            lines.append(f"  {w.gloss} [{w.category}]: {w.phonetic_form}")
+            for h in w.historical_forms:
+                lines.append(f"    - {h['change_name']}: {h['old_form']} → {h['new_form']}")
+        lines.append("")
+    else:
+        lines.append("No words were changed by sound changes or phonotactic repair.")
+        lines.append("")
+
+    lines.append("FULL BLENDED CATALOG (JSON):")
+    lines.append(json.dumps(blended.to_dict(), ensure_ascii=False, indent=2))
+    lines.append("")
+    lines.append(f"Typology comparison:")
+    lines.append(f"  Primary consonants: {len(primary.typology.consonants)} types")
+    lines.append(f"  Substrate consonants: {len(substrate.typology.consonants)} types")
+    lines.append(f"  Blended consonants: {len(blended.typology.consonants)} types")
+    lines.append("")
+    lines.append(f"  Primary syllable patterns: {primary.typology.syllable_patterns[:3]}")
+    lines.append(f"  Substrate syllable patterns: {substrate.typology.syllable_patterns[:3]}")
+    lines.append(f"  Blended syllable patterns: {blended.typology.syllable_patterns[:3]}")
+    lines.append("")
+    lines.append(f"  Primary max onset complexity: {primary.typology.max_onset_complexity}")
+    lines.append(f"  Substrate max onset complexity: {substrate.typology.max_onset_complexity}")
+    lines.append(f"  Blended max onset complexity: {blended.typology.max_onset_complexity}")
 
     return lines
 

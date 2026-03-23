@@ -14,9 +14,10 @@ from src.world.world_data import World, Tile, Region, Polity, Leader, Culture, R
 
 class WorldGenerator:
     def generate_world(self) -> 'World':
-        # DEBUG: Print config file path and tectonic config summary
+        # DEBUG: Print config file path(s) and tectonic config summary
         if self.verbose_logging:
-            print(f"[WorldGen][DEBUG] ConfigManager path: {getattr(self.config, 'config_path', 'unknown')}")
+            paths = getattr(self.config, 'config_paths', [getattr(self.config, 'config_path', 'unknown')])
+            print(f"[WorldGen][DEBUG] ConfigManager paths: {paths}")
             tectonics = self.config.get_section('world.tectonics')
             print("[WorldGen][DEBUG] Tectonic config at worldgen:")
             for k, v in tectonics.items():
@@ -239,6 +240,9 @@ class WorldGenerator:
             return
         if setup == 'diaspora':
             self._generate_diaspora_setup(world)
+            return
+        if setup == 'civ_test':
+            self._generate_civ_test_setup(world)
             return
         else:
             self._generate_test_polity(world)
@@ -490,6 +494,51 @@ class WorldGenerator:
         if self.verbose_logging:
             print(f"Diaspora setup: 1000 population placed on tile {diaspora_tile_idx}")
 
+    def _generate_civ_test_setup(self, world: 'World') -> None:
+        """Spawn 5 nearby land tiles with 1000 population each for quick civ testing."""
+        land_tiles = [i for i, tile in enumerate(world.tiles) if not tile.is_water]
+        if len(land_tiles) < 5:
+            if self.verbose_logging:
+                print("civ_test setup aborted: not enough land tiles")
+            return
+
+        seed_idx = random.choice(land_tiles)
+        cluster = self._gather_contiguous_tiles(world, seed_idx, target_count=40)
+        if len(cluster) < 5:
+            remaining = [idx for idx in land_tiles if idx not in cluster]
+            random.shuffle(remaining)
+            cluster.extend(remaining[: max(0, 5 - len(cluster))])
+
+        # Spread selections across the cluster to avoid tight clumping
+        selected: List[int] = []
+        if cluster:
+            stride = max(1, len(cluster) // 5)
+            for i in range(0, len(cluster), stride):
+                selected.append(cluster[i])
+                if len(selected) >= 5:
+                    break
+        selected = selected[:5]
+        if len(selected) < 5:
+            # Fill any gaps from remaining cluster entries
+            for idx in cluster:
+                if idx not in selected:
+                    selected.append(idx)
+                    if len(selected) >= 5:
+                        break
+
+        for idx in selected:
+            tile = world.tiles[idx]
+            tile.population = 1000
+            tile.development = 1000.0
+
+        # Skip diaspora delays for this test setup by advancing past the delay window
+        delay_years = self.config.get('simulation.diaspora.population_center_delay_years', 0)
+        if delay_years and world.current_year <= delay_years:
+            world.current_year = delay_years + 1
+
+        if self.verbose_logging:
+            print(f"civ_test setup: seeded 5 tiles {selected} with population 1000")
+
     def _gather_contiguous_tiles(self, world: 'World', start_index: int, target_count: int) -> List[int]:
         """Collect up to target_count land tiles contiguous from a seed."""
         if start_index >= len(world.tiles) or world.tiles[start_index].is_water:
@@ -536,6 +585,8 @@ class WorldGenerator:
             immunity_end_year=None,
             is_initial=True
         )
+        if hasattr(world, '_ensure_culture_ideas'):
+            world._ensure_culture_ideas(new_culture)
         world.cultures.append(new_culture)
         if hasattr(world, '_register_culture_name'):
             world._register_culture_name(new_culture.name)

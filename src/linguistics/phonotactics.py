@@ -1,6 +1,7 @@
 """Lightweight phonotactic helpers for enforcing typological constraints."""
 from __future__ import annotations
 
+import re
 from typing import Iterable, List, Sequence, Set, TYPE_CHECKING
 
 DEFAULT_VOWELS: Sequence[str] = ("a", "e", "i", "o", "u")
@@ -17,6 +18,25 @@ def enforce_phonotactics_form(word_form: str, typology: "Typology") -> str:
     vowel_chars = _build_vowel_char_set(typology)
     default_vowel = (typology.vowels[0] if typology.vowels else DEFAULT_VOWELS[0]) or DEFAULT_VOWELS[0]
 
+    # First, check if the word already fits allowed syllable patterns and cluster limits
+    def fits_typology(form: str) -> bool:
+        # Check for illegal onset/coda clusters
+        clusters = re.findall(r'[^aeiouy\s-]+', form)
+        for cl in clusters:
+            if len(cl) > max(typology.max_onset_complexity, typology.max_coda_complexity):
+                return False
+        # Check for allowed syllable patterns if defined
+        if typology.syllable_patterns:
+            for pat in typology.syllable_patterns:
+                if re.fullmatch(pat.replace('C', '[^aeiouy\s-]').replace('V', '[aeiouy]'), form):
+                    return True
+            return False
+        return True
+
+    if fits_typology(word_form):
+        return word_form
+
+    # Otherwise, minimally repair as before
     result: List[str] = []
     cluster: List[str] = []
     stage = "onset"
@@ -42,7 +62,35 @@ def enforce_phonotactics_form(word_form: str, typology: "Typology") -> str:
         terminal_stage = stage if stage == "coda" else "onset"
         result.extend(_repair_cluster(cluster, terminal_stage, typology, default_vowel))
 
-    return "".join(result)
+    smoothed = "".join(result)
+    return simplify_orthography(smoothed)
+
+
+_SEQUENCE_PATTERNS = {
+    1: re.compile(r"([A-Za-z])\\1{2,}", flags=re.IGNORECASE),
+    2: re.compile(r"((?:[A-Za-z]{2}))\\1{2,}", flags=re.IGNORECASE),
+    3: re.compile(r"((?:[A-Za-z]{3}))\\1{2,}", flags=re.IGNORECASE),
+}
+
+_VOWEL_CLUSTER_PATTERN = re.compile(r"([aeiouy]{3,})", flags=re.IGNORECASE)
+
+
+def simplify_orthography(word_form: str) -> str:
+    """Condense extreme letter patterns while keeping the word recognizable."""
+    if not word_form:
+        return word_form
+    simplified = word_form
+    for length, pattern in _SEQUENCE_PATTERNS.items():
+        simplified = pattern.sub(lambda match: match.group(1) * 2, simplified)
+    simplified = _VOWEL_CLUSTER_PATTERN.sub(_trim_vowel_cluster, simplified)
+    return simplified
+
+
+def _trim_vowel_cluster(match: re.Match[str]) -> str:
+    cluster = match.group(1)
+    if len(cluster) <= 3:
+        return cluster
+    return cluster[:2] + cluster[-1]
 
 
 def _is_boundary(ch: str) -> bool:

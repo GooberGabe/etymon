@@ -8,7 +8,8 @@ from .catalog_io import (
     load_catalog_from_json,
     save_catalog_to_json,
 )
-from .phonotactics import enforce_phonotactics_form
+from .phonotactics import enforce_phonotactics_form, simplify_orthography
+from .compounding import build_compound, derive_surface_form, build_compound_with_gloss
 from .typology_blender import blend_typologies
 from .time_evolution import apply_time_shift
 from .pipeline import (
@@ -30,6 +31,10 @@ __all__ = [
     "load_catalog_from_json",
     "save_catalog_to_json",
     "enforce_phonotactics_form",
+    "simplify_orthography",
+    "build_compound",
+    "build_compound_with_gloss",
+    "derive_surface_form",
     "blend_typologies",
     "apply_time_shift",
     "evolve_catalog",

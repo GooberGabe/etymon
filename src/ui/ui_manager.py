@@ -1,10 +1,13 @@
 """User interface management for Etymon."""
 
+import json
+from datetime import datetime
+from pathlib import Path
 import pygame
 from typing import Dict, List, Optional, Tuple, Any
 
 from src.core.config_manager import ConfigManager
-from src.world.world_data import World, Tile
+from src.world.world_data import World, Tile, Polity
 
 
 class UIManager:
@@ -51,6 +54,7 @@ class UIManager:
         self._tooltip_active = False
         self._hover_movement_threshold = 2  # pixels of wiggle room
         self._elevation_stats: Optional[Dict[str, float]] = None
+        self.tooltip_max_line_chars = self.config.get('ui.tooltips.max_line_chars', 96)
     
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle pygame events.
@@ -145,12 +149,9 @@ class UIManager:
             self._render_map_mode_panel()
         
         # Render tile information tooltip
-        if self.show_tile_info and self.selected_tile and self.tile_info_position:
+        if self.show_tile_info and self.selected_tile:
             self._render_tile_tooltip()
         
-        # Render help text
-        self._render_help_text()
-
         if self.graph_view_active:
             self._render_polity_graph_overlay()
     
@@ -236,10 +237,46 @@ class UIManager:
                 self._cycle_map_mode()
         elif key == pygame.K_g:
             self.toggle_graph_view()
+        elif key == pygame.K_f:
+            self._toggle_focus_filter()
         elif key == pygame.K_l:
             # Print language catalog for hovered polity's primary culture (linguistics mode only)
             if hasattr(self, 'world') and self.world.current_map_mode == "linguistics":
                 self._print_language_catalog_for_hovered_polity()
+
+    def _toggle_focus_filter(self) -> None:
+        """Toggle the console focus filter using the currently hovered polity."""
+        world = getattr(self, 'world', None)
+        if world is None:
+            return
+        renderer = getattr(self, 'map_renderer', None)
+        tile = renderer.get_tile_at_position(world, self.mouse_position) if renderer else None
+        hovered_polity_id = getattr(tile, 'polity_id', -1) if tile else -1
+        if world.is_focus_filter_active():
+            active_id = world.get_focus_filter_polity_id()
+            if hovered_polity_id >= 0 and hovered_polity_id != active_id:
+                if world.set_focus_filter_polity(hovered_polity_id):
+                    label = self._describe_polity(hovered_polity_id)
+                    print(f"[focus] Tracking {label}")
+                return
+            world.clear_focus_filter()
+            print("[focus] Cleared focus filter")
+            return
+        if hovered_polity_id < 0:
+            print("[focus] Hover a polity to set the focus filter")
+            return
+        if world.set_focus_filter_polity(hovered_polity_id):
+            label = self._describe_polity(hovered_polity_id)
+            print(f"[focus] Tracking {label}")
+
+    def _describe_polity(self, polity_id: int) -> str:
+        """Return a friendly label for console focus messages."""
+        world = getattr(self, 'world', None)
+        if world and 0 <= polity_id < len(world.polities):
+            polity = world.polities[polity_id]
+            if polity and getattr(polity, 'name', None):
+                return f"{polity.name} (ID {polity_id})"
+        return f"Polity {polity_id}"
 
     def toggle_graph_view(self) -> None:
         """Toggle the full-screen polity development graph."""
@@ -365,41 +402,33 @@ class UIManager:
                 f"Type: {'Water' if self.selected_tile.is_water else 'Land'}",
                 f"Elevation: {self.selected_tile.elevation:.3f}",
             ])
-        
-        # Calculate tooltip size
-        max_width = 0
-        total_height = 0
+        display_lines = [self._truncate_tooltip_line(line) for line in info_lines]
+        if not display_lines:
+            return
+
         line_height = font.get_height()
-        
-        for line in info_lines:
-            text_width = font.size(line)[0]
-            max_width = max(max_width, text_width)
-            total_height += line_height + 2
-        
-        # Position tooltip to avoid screen edges
-        tooltip_width = max_width + 20
-        tooltip_height = total_height + 10
-        
-        x = self.tile_info_position[0] + 10
-        y = self.tile_info_position[1] + 10
-        
-        # Keep tooltip on screen
-        if x + tooltip_width > self.width:
-            x = self.tile_info_position[0] - tooltip_width - 10
-        if y + tooltip_height > self.height:
-            y = self.tile_info_position[1] - tooltip_height - 10
-        
-        # Draw tooltip background
-        tooltip_rect = pygame.Rect(x, y, tooltip_width, tooltip_height)
-        pygame.draw.rect(self.screen, (0, 0, 0, 200), tooltip_rect)
-        pygame.draw.rect(self.screen, (255, 255, 255), tooltip_rect, 1)
-        
-        # Draw text
-        text_y = y + 5
-        for line in info_lines:
-            text = font.render(line, True, (255, 255, 255))
-            self.screen.blit(text, (x + 10, text_y))
-            text_y += line_height + 2
+        line_spacing = 4
+        max_width = max(font.size(line)[0] for line in display_lines)
+        content_height = len(display_lines) * line_height + max(0, (len(display_lines) - 1) * line_spacing)
+        padding_x = 12
+        padding_y = 10
+        panel_margin = 14
+        panel_width = min(max_width + padding_x * 2, self.width - panel_margin * 2)
+        panel_height = content_height + padding_y * 2
+        panel_x = self.width - panel_width - panel_margin
+        panel_y = self.height - panel_height - panel_margin
+
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel_surface.fill((0, 0, 0, 190))
+        pygame.draw.rect(panel_surface, (255, 255, 255), panel_surface.get_rect(), 1)
+        self.screen.blit(panel_surface, (panel_x, panel_y))
+
+        text_y = panel_y + padding_y
+        text_x = panel_x + padding_x
+        for line in display_lines:
+            text_surface = font.render(line, True, (255, 255, 255))
+            self.screen.blit(text_surface, (text_x, text_y))
+            text_y += line_height + line_spacing
 
     def _handle_hover_motion(self, position: Tuple[int, int]) -> None:
         """Track hover movement to control tooltip visibility."""
@@ -414,6 +443,13 @@ class UIManager:
             self.hover_timer = 0.0
             self._tooltip_active = False
             self._hide_tooltip()
+
+    def _truncate_tooltip_line(self, line: str) -> str:
+        """Clamp tooltip text to a reasonable length so the panel stays readable."""
+        max_chars = max(8, int(self.tooltip_max_line_chars))
+        if len(line) <= max_chars:
+            return line
+        return f"{line[:max_chars - 3].rstrip()}..."
 
     def _hide_tooltip(self) -> None:
         """Clear tooltip visibility state."""
@@ -460,10 +496,14 @@ class UIManager:
             print(f"Culture '{primary_culture_name}' has no associated language catalog")
             return
             
+        export_path = self._export_language_catalog(polity, primary_culture_name, catalog)
+
         # Print the catalog
         print(f"\n=== LANGUAGE CATALOG: {catalog.name} ===")
         print(f"Culture: {primary_culture_name}")
         print(f"Polity: {polity.name} (ID {polity_id})")
+        if export_path:
+            print(f"Exported full catalog + naming config to: {export_path}")
         print(f"Words: {catalog.word_count()}")
         print(f"Categories: {', '.join(catalog.categories())}")
         
@@ -490,6 +530,54 @@ class UIManager:
                 print(f"  {word.phonetic_form} - {gloss}")
             print()
 
+    def _export_language_catalog(self, polity: Polity, culture_name: str, catalog) -> Optional[Path]:
+        """Export a full snapshot of the catalog plus naming config for debugging."""
+        world = getattr(self, 'world', None)
+        config = getattr(self, 'config', None)
+        try:
+            base_dir = Path("exports/linguistics")
+            base_dir.mkdir(parents=True, exist_ok=True)
+
+            def _safe_token(token: str) -> str:
+                cleaned = "".join(ch for ch in token if ch.isalnum() or ch in {'-', '_', ' '}).strip()
+                cleaned = cleaned.replace(" ", "_")
+                return cleaned or "token"
+
+            safe_polity = _safe_token(polity.name or "Polity")
+            safe_culture = _safe_token(culture_name or "Culture")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"catalog_{safe_polity}_{safe_culture}_{timestamp}.json"
+            path = base_dir / filename
+
+            polity_naming = {}
+            settlement_naming = {}
+            if config:
+                polity_naming = config.get_section("linguistics").get("polity_naming", {})
+                settlement_naming = config.get_section("linguistics").get("settlement_naming", {})
+
+            payload = {
+                "polity": {
+                    "id": getattr(polity, 'id', None),
+                    "name": polity.name,
+                    "primary_culture": culture_name,
+                },
+                "catalog": catalog.to_dict() if hasattr(catalog, "to_dict") else {},
+                "naming": {
+                    "polity_naming": polity_naming,
+                    "settlement_naming": settlement_naming,
+                },
+                "metadata": {
+                    "exported_at": timestamp,
+                    "map_mode": getattr(world, 'current_map_mode', None),
+                }
+            }
+
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            return path
+        except Exception as exc:
+            print(f"[export] Failed to export catalog: {exc}")
+            return None
+
     def _build_war_tooltip_info(self) -> List[str]:
         lines: List[str] = []
         tile = self.selected_tile
@@ -503,6 +591,12 @@ class UIManager:
             return ["War Intel: Uncontrolled territory."]
         polity_label = self._get_polity_label(polity_id)
         lines.append(f"Polity: {polity_label} (ID {polity_id})")
+        polity = None
+        if 0 <= polity_id < len(world.polities):
+            polity = world.polities[polity_id]
+        vassal_lines = self._build_vassal_status_lines(polity)
+        if vassal_lines:
+            lines.extend(vassal_lines)
         relationships = [rel for rel in world.relationships if rel and rel.involves(polity_id) and rel.shared_border_tiles > 0]
         if not relationships:
             lines.append("No known diplomatic relationships.")
@@ -536,6 +630,36 @@ class UIManager:
                 lines.append(line)
         if not wars and not peaceful:
             lines.append("No diplomatic data available.")
+        return lines
+
+    def _build_vassal_status_lines(self, polity: Optional[Polity]) -> List[str]:
+        if polity is None or not getattr(polity, 'is_active', True):
+            return []
+        world = getattr(self, 'world', None)
+        if world is None:
+            return []
+        suzerain_id = getattr(polity, 'suzerain_id', -1)
+        is_vassal = isinstance(suzerain_id, int) and suzerain_id >= 0
+        vassal_ids = [
+            vid for vid in (getattr(polity, 'vassal_ids', []) or [])
+            if isinstance(vid, int) and 0 <= vid < len(world.polities)
+        ]
+        child_labels: List[str] = []
+        for vid in vassal_ids:
+            child = world.polities[vid]
+            if child and getattr(child, 'is_active', True):
+                child_labels.append(self._get_polity_label(vid))
+        if not is_vassal and not child_labels:
+            return []
+        lines = ["Vassalage:"]
+        if is_vassal:
+            lines.append(f"  Subject of {self._get_polity_label(suzerain_id)}")
+        if child_labels:
+            display = ", ".join(child_labels[:4])
+            remaining = len(child_labels) - 4
+            if remaining > 0:
+                display += f", +{remaining} more"
+            lines.append(f"  Overlord of {display}")
         return lines
 
     def _get_polity_label(self, polity_id: Optional[int]) -> str:
@@ -584,12 +708,30 @@ class UIManager:
                     friendly_dominant = world.get_culture_display_label(dominant_culture_name)
                     if friendly_dominant:
                         dominant_label = friendly_dominant
+                dominant_culture = None
                 for culture in world.cultures:
-                    if culture.name == dominant_culture_name and culture.heritage:
-                        info_lines.append(f"Heritage of {dominant_label}:")
-                        for parent, heritage_pct in culture.heritage.items():
-                            info_lines.append(f"  From {parent}: {heritage_pct:.1%}")
+                    if culture.name == dominant_culture_name:
+                        dominant_culture = culture
+                        if culture.heritage:
+                            info_lines.append(f"Heritage of {dominant_label}:")
+                            for parent, heritage_pct in culture.heritage.items():
+                                info_lines.append(f"  From {parent}: {heritage_pct:.1%}")
                         break
+                if dominant_culture:
+                    if hasattr(world, '_ensure_culture_ideas'):
+                        world._ensure_culture_ideas(dominant_culture)
+                    concern_defs = world._culture_concern_defs() if hasattr(world, '_culture_concern_defs') else {}
+                    if concern_defs:
+                        info_lines.append(f"{dominant_label} Ideas:")
+                        for concern_key, concern in concern_defs.items():
+                            value = getattr(dominant_culture, 'ideas', {}).get(concern_key)
+                            label = concern.get('label', concern_key.title())
+                            if value is None:
+                                info_lines.append(f"  {label}: (none)")
+                                continue
+                            idea_label = world._idea_label_for_value(concern_key, value) if hasattr(world, '_idea_label_for_value') else None
+                            resolved_label = idea_label or "Unaligned"
+                            info_lines.append(f"  {label}: {resolved_label} ({value:.2f})")
         else:
             info_lines.append("Cultural Makeup: None")
         
@@ -627,6 +769,7 @@ class UIManager:
             if world and self.selected_tile.polity_id < len(world.polities):
                 polity = world.polities[self.selected_tile.polity_id]
                 polity_name = polity.name
+                leader = getattr(polity, 'leader', None)
                 
             control_level = getattr(self.selected_tile, 'control_level', 50)
             info_lines.extend([
@@ -635,6 +778,19 @@ class UIManager:
                 f"Population: {getattr(self.selected_tile, 'population', 0):,}",
                 f"Development: {getattr(self.selected_tile, 'development', 0):.2f}",
             ])
+
+            if leader:
+                leader_label = leader.name or "Unknown Leader"
+                dynasty = getattr(leader, 'dynasty', None)
+                if dynasty:
+                    leader_label = f"{leader_label} ({dynasty})"
+                age = getattr(leader, 'age', None)
+                if isinstance(age, int):
+                    leader_label = f"{leader_label}, Age {age}"
+                info_lines.append(f"Leader: {leader_label}")
+                traits = getattr(leader, 'traits', None) or []
+                trait_text = ", ".join(traits) if traits else "None"
+                info_lines.append(f"Leader Traits: {trait_text}")
             
             # Show if this affects control
             if hasattr(self.selected_tile, 'cultural_makeup') and self.selected_tile.cultural_makeup:
@@ -952,48 +1108,6 @@ class UIManager:
         info_lines.append(f"Temperature: {getattr(tile, 'temperature', 0):.3f}")
         info_lines.append(f"Rainfall: {getattr(tile, 'rainfall', 0):.3f}")
     
-    def _render_help_text(self) -> None:
-        """Render help text in corner of screen."""
-        font = pygame.font.Font(None, 18)
-        
-        help_lines = [
-            "Controls:",
-            "SPACE - Generate new world",
-            "       (reloads config file)",
-            "ENTER - Advance tick",
-            "       (auto-ticks every 0.5s)",
-            "Buttons: Pause / 2x",
-            "       (top-right panel)",
-            "Right-click + drag - Pan",
-            "Mouse wheel - Zoom",
-            "TAB - Toggle statistics",
-            "T - Toggle tile info",
-            "M - Cycle map modes",
-            "    (Use panel to select mode)",
-            "    Polity borders always shown",
-            "G - Polity graph view",
-            "    (pauses while open)",
-            "L - Print language catalog",
-            "    (linguistics mode only)",
-            "Left-click - Select tile/mode",
-            "ESC - Exit"
-        ]
-        
-        y_offset = self.height - (len(help_lines) * 20) - 10
-        
-        for line in help_lines:
-            text = font.render(line, True, (255, 255, 255))
-            
-            # Draw background for readability
-            if line == "Controls:":
-                bg_rect = pygame.Rect(self.width - 150, y_offset - 2, 145, 18)
-                pygame.draw.rect(self.screen, (0, 0, 0, 128), bg_rect)
-            else:
-                bg_rect = pygame.Rect(self.width - 150, y_offset - 2, 145, 18)
-                pygame.draw.rect(self.screen, (0, 0, 0, 64), bg_rect)
-            
-            self.screen.blit(text, (self.width - 145, y_offset))
-            y_offset += 20
 
     def _downsample_history(self, entries: List[Dict[str, Any]], max_points: int) -> List[Dict[str, Any]]:
         """Reduce a history list to at most max_points samples."""

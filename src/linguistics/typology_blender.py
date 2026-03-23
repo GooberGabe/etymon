@@ -25,25 +25,29 @@ def blend_typologies(
     phonological_weight = weight * 1.5 if substrate_mode else weight
     phonological_weight = min(1.0, phonological_weight)
 
-    consonants = _merge_unique(primary_typology.consonants, influence_typology.consonants)
-    vowels = _merge_unique(primary_typology.vowels, influence_typology.vowels)
+    consonants = _aggressive_merge(primary_typology.consonants, influence_typology.consonants, phonological_weight, rng)
+    vowels = _aggressive_merge(primary_typology.vowels, influence_typology.vowels, phonological_weight, rng)
 
-    max_onset_complexity = _weighted_complexity(
+    max_onset_complexity = _aggressive_weighted_complexity(
         primary_typology.max_onset_complexity,
         influence_typology.max_onset_complexity,
         phonological_weight,
+        substrate_mode
     )
-    max_coda_complexity = _weighted_complexity(
+    max_coda_complexity = _aggressive_weighted_complexity(
         primary_typology.max_coda_complexity,
         influence_typology.max_coda_complexity,
         phonological_weight,
+        substrate_mode
     )
 
-    allowed_onsets = _merge_unique(primary_typology.allowed_onsets, influence_typology.allowed_onsets)
-    allowed_codas = _merge_unique(primary_typology.allowed_codas, influence_typology.allowed_codas)
-    syllable_patterns = _merge_unique(
+    allowed_onsets = _aggressive_merge(primary_typology.allowed_onsets, influence_typology.allowed_onsets, phonological_weight, rng)
+    allowed_codas = _aggressive_merge(primary_typology.allowed_codas, influence_typology.allowed_codas, phonological_weight, rng)
+    syllable_patterns = _aggressive_merge(
         primary_typology.syllable_patterns,
         influence_typology.syllable_patterns,
+        phonological_weight,
+        rng
     )
 
     stress_pattern = _select_stress_pattern(
@@ -53,29 +57,35 @@ def blend_typologies(
         rng,
     )
 
-    has_tone = _blended_bool(primary_typology.has_tone, influence_typology.has_tone, weight, rng)
-    vowel_harmony = _blended_bool(
+    has_tone = _aggressive_blended_bool(primary_typology.has_tone, influence_typology.has_tone, phonological_weight, rng, substrate_mode)
+    vowel_harmony = _aggressive_blended_bool(
         primary_typology.vowel_harmony,
         influence_typology.vowel_harmony,
         phonological_weight,
         rng,
+        substrate_mode
     )
-    consonant_mutation = _blended_bool(
+    consonant_mutation = _aggressive_blended_bool(
         primary_typology.consonant_mutation,
         influence_typology.consonant_mutation,
         phonological_weight,
         rng,
+        substrate_mode
     )
 
     sound_changes = _combine_sound_changes(primary_typology, influence_typology, substrate_mode)
 
-    lenition_contexts = _merge_unique(
+    lenition_contexts = _aggressive_merge(
         primary_typology.lenition_contexts,
         influence_typology.lenition_contexts,
+        phonological_weight,
+        rng
     )
-    fortition_contexts = _merge_unique(
+    fortition_contexts = _aggressive_merge(
         primary_typology.fortition_contexts,
         influence_typology.fortition_contexts,
+        phonological_weight,
+        rng
     )
 
     return Typology(
@@ -96,35 +106,42 @@ def blend_typologies(
     )
 
 
-def _merge_unique(primary: Sequence[str], influence: Sequence[str]) -> List[str]:
-    seen = set()
-    merged: List[str] = []
-    for source in (primary, influence):
-        for value in source:
-            if value in seen:
-                continue
-            seen.add(value)
-            merged.append(value)
-    return merged
+
+def _aggressive_merge(primary: Sequence[str], influence: Sequence[str], weight: float, rng: random.Random) -> List[str]:
+    """Interleave/weight elements from both lists, not just append unique."""
+    pool = list(primary) + list(influence)
+    unique = list(dict.fromkeys(pool))  # preserve order, remove dups
+    result = []
+    for item in unique:
+        if item in primary and item in influence:
+            # Present in both, always include
+            result.append(item)
+        elif item in primary:
+            # Only in primary, include with probability 1-weight
+            if rng.random() > weight:
+                result.append(item)
+        elif item in influence:
+            # Only in influence, include with probability = weight
+            if rng.random() < weight:
+                result.append(item)
+    rng.shuffle(result)
+    return result
 
 
-def _weighted_complexity(primary_value: int, influence_value: int, weight: float) -> int:
-    """Blend syllable complexity values conservatively to prevent unrealistic jumps.
 
-    In real languages, syllable structure changes very gradually. This function
-    limits changes to at most 1 complexity level per contact event, regardless
-    of influence strength.
-    """
+def _aggressive_weighted_complexity(primary_value: int, influence_value: int, weight: float, substrate_mode: bool) -> int:
+    """Allow larger jumps in complexity if substrate influence is strong."""
     if primary_value == influence_value:
         return primary_value
-
-    # Limit maximum change to 1 level per contact event
+    if substrate_mode and weight > 0.5:
+        # If substrate is strong, jump closer to influence
+        return int(round(primary_value * (1-weight) + influence_value * weight))
+    # Otherwise, allow up to 2 steps if weight is moderate, else 1
+    max_step = 2 if weight > 0.4 else 1
     if influence_value > primary_value:
-        # Can increase by at most 1
-        return min(primary_value + 1, influence_value)
+        return min(primary_value + max_step, influence_value)
     else:
-        # Can decrease by at most 1
-        return max(primary_value - 1, influence_value)
+        return max(primary_value - max_step, influence_value)
 
 
 def _select_stress_pattern(
@@ -140,17 +157,25 @@ def _select_stress_pattern(
     return influence_pattern if rng.random() < weight else primary_pattern
 
 
-def _blended_bool(
+
+def _aggressive_blended_bool(
     primary_value: bool,
     influence_value: bool,
     weight: float,
     rng: random.Random,
+    substrate_mode: bool = False
 ) -> bool:
     if influence_value == primary_value:
         return primary_value
+    if substrate_mode:
+        # In substrate mode, much more likely to adopt substrate trait
+        if influence_value:
+            return rng.random() < (weight + 0.3)  # boost adoption
+        else:
+            return rng.random() > (weight - 0.2)  # more likely to lose trait if substrate lacks it
+    # Non-substrate: still more likely to adopt if weight is high
     if influence_value and not primary_value:
-        return rng.random() < weight
-    # influence lacks the trait; only keep it if weight is low
+        return rng.random() < (weight + 0.1)
     retain_threshold = max(0.0, 1.0 - weight)
     return primary_value and rng.random() < retain_threshold
 
