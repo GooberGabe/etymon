@@ -802,41 +802,8 @@ class MapRenderer:
         world: World,
         linguistics_state: Optional[Dict[str, Any]],
     ) -> None:
-        """Render tile colors emphasizing linguistic ancestry and depth."""
-        if tile.is_water:
-            depth_ratio = tile.elevation / world.sea_level if world.sea_level > 0 else 0
-            deep_color = self._hex_to_rgb('#01344F')
-            shallow_color = self._hex_to_rgb('#05A4C8')
-            tile.color = self._interpolate_color(deep_color, shallow_color, depth_ratio)
-            return
-
-        culture_name, share = self._get_tile_primary_culture(tile, world)
-        base_color = self._get_culture_color(world, culture_name)
-        if base_color is None:
-            base_color = self._get_polity_color(world, getattr(tile, 'polity_id', -1))
-        if base_color is None:
-            base_color = (120, 120, 130)
-
-        share_factor = max(0.0, min(1.0, share))
-        base_blend = self._interpolate_color((35, 35, 45), base_color, 0.5 + share_factor * 0.4)
-
-        culture = None
-        if linguistics_state and culture_name:
-            culture = linguistics_state.get('culture_lookup', {}).get(culture_name)
-        depth = max(0, getattr(culture, 'language_time_depth', 0) if culture else 0)
-        max_depth = max(1, (linguistics_state or {}).get('max_depth', 1))
-        depth_ratio = min(1.0, depth / max_depth) if max_depth else 0.0
-
-        parent_name = getattr(culture, 'language_parent', None) if culture else None
-        parent_color = self._resolve_language_parent_color(parent_name, linguistics_state)
-        if parent_color is None and culture_name:
-            parent_color = self._resolve_language_parent_color(culture_name, linguistics_state)
-        if parent_color:
-            base_blend = self._interpolate_color(parent_color, base_blend, 0.6 + depth_ratio * 0.3)
-
-        tint_anchor = (245, 235, 210) if depth_ratio > 0.5 else (85, 125, 180)
-        tint_strength = 0.2 + depth_ratio * 0.5
-        tile.color = self._interpolate_color(base_blend, tint_anchor, tint_strength)
+        """Render tile colors using the same system as the culture map mode."""
+        self._color_tile_by_culture(tile, world)
 
     def _get_tile_primary_culture(self, tile: Tile, world: World) -> Tuple[Optional[str], float]:
         """Return the tile's dominant culture and its share."""

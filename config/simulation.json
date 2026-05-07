@@ -103,8 +103,8 @@
       "special_title_suffixes": ["ate", "dom"],
       "pattern_overrides": {},
       "rank_thresholds": {
-        "duchy_percentile": 0.3,
-        "kingdom_percentile": 0.9
+        "duchy_percentile": 0.5,
+        "kingdom_percentile": 0.95
       }
     },
     "word_evolution": {
@@ -116,7 +116,7 @@
   "simulation": {
     "test_setup": "diaspora",
     "setup_types": ["uniform_population", "cultural", "war", "diaspora", "civ_test"],
-    "loaded_save": "savegame.json",
+    "loaded_save": null,
     "save": {
       "default_name": "savegame",
       "append_timestamp": false
@@ -131,8 +131,8 @@
       "profile_ticks": false,
       "profile_ticks_print": false,
       "profile_tick_history": 120,
-      "profile_render": true,
-      "profile_render_print": true
+      "profile_render": false,
+      "profile_render_print": false
     },
     "logging": {
       "categories": ["tick", "polity", "culture", "war", "battle"],
@@ -165,10 +165,10 @@
       "population_center_threshold_scaling": 0.001,
       "population_center_percentage": 0.003,
       "population_center_creation_hysteresis_ratio": 0.15,
-      "population_center_demotion_grace_years": 1,
-      "population_center_demotion_buffer_years": 2,
-      "population_center_demotion_population_ratio": 0.9,
-      "population_center_demotion_development_ratio": 0.8,
+      "population_center_demotion_grace_years": 0.5,
+      "population_center_demotion_buffer_years": 1,
+      "population_center_demotion_population_ratio": 0.95,
+      "population_center_demotion_development_ratio": 0.85,
       "population_center_absolute_population": 10000,
       "population_center_absolute_development": 10000,
       "new_culture_control_bonus": 2.0,
@@ -185,6 +185,13 @@
       "description": "rapid_increase_rate when dev < pop, decay begins when pop < dev * decay_threshold_ratio (50%), climate factors affect development growth rate. Population center scaling now keys off total development with demotion driven by population/development ratios"
     },
     "migration": {
+      "itinerant_migration_development_transfer_ratio": 0.8,
+      "mixed_migration_development_transfer_ratio": 0.5,
+      "sedentary_migration_development_transfer_ratio": 0.2,
+      "migration_development_loss_percent": 0.2,
+      "itinerance": {
+        "description": "Cultural idea (0.0-1.0) representing migratory tendency. 0.25 = baseline (current sim), higher = more migratory, lower = more sedentary. Affects migration size, exodus frequency/size, and migration_influence_factor."
+      },
       "destination_potential_threshold": 40,
       "development_ratio_factor": 100,
       "death_penalty_factor": 150,
@@ -192,10 +199,10 @@
       "migration_threshold": 5,
       "migration_rate_max": 0.075,
       "development_migration_bonus": 60,
-      "population_center_dp_bonus": 15,
-      "population_center_dp_bonus_scaling": 0.8,
-      "population_center_dp_bonus_max_multiplier": 1.25,
-      "population_center_overcrowding_penalty_multiplier": 0.75,
+      "population_center_dp_bonus": 5,
+      "population_center_dp_bonus_scaling": 0.5,
+      "population_center_dp_bonus_max_multiplier": 0.7,
+      "population_center_overcrowding_penalty_multiplier": 0.85,
       "overcap_dp_penalty": 150,
       "baseline_migration_chance": 0.05,
       "baseline_migration_min": 1,
@@ -207,12 +214,11 @@
       "major_migration_cooldown_ticks": 2,
       "major_migration_loss_ratio_trigger": 0.3,
       "exodus_migration_chance": 0.03,
-      "exodus_max_distance": 6,
+      "exodus_max_distance": 5,
       "exodus_min_population_ratio": 0.05,
       "exodus_max_population_ratio": 0.1,
       "exodus_cross_region_bonus": 5,
-      "exodus_development_transfer_ratio": 0.5,
-      "mass_death_exodus_ratio": 0.14,
+      "mass_death_exodus_ratio": 0.1,
       "mass_death_exodus_population": 30,
       "polity_expansion_control_threshold": 50,
       "polity_expansion_population_threshold": 20,
@@ -220,7 +226,7 @@
       "elevation_penalty_threshold": 0.4,
       "elevation_penalty_factor": 70.0,
       "elevation_penalty_curve_exponent": 2.0,
-      "description": "DP based on development/population ratio minus recent deaths, development bonus for well-developed areas, population center bonus, baseline migration for diffusion. Elevation penalty only applies when source elevation is above threshold, penalizing upward migration with curve-based scaling"
+      "description": "DP based on development/population ratio minus recent deaths, development bonus for well-developed areas, population center bonus, baseline migration for diffusion. Elevation penalty only applies when source elevation is above threshold, penalizing upward migration with curve-based scaling.\n\nItinerance: A cultural idea (0.0-1.0) for each culture. 0.25 = baseline (current sim), higher = more migratory, lower = more sedentary. High itinerance increases migration size (except baseline), exodus frequency/size, and migration_influence_factor."
     },
     "control": {
       "assimilation_penalty": 25,
@@ -267,7 +273,7 @@
       "migration_cultural_influence": 0.1,
       "migration_culture_threshold": 10,
       "exodus_cultural_multiplier": 1.35,
-      "min_population_for_culture": 500,
+      "min_population_for_culture": 400,
       "cultural_assimilation_rate": 0.0015,
       "cultural_control_decay_rate": 0.4,
       "misalignment_control_multiplier": 1.5,
@@ -346,8 +352,8 @@
         },
         "diplomat": {
           "opinion_bonus": 20.0,
-          "annexation_tile_cap_bonus": 10,
-          "annexation_ratio_reduction": 0.25
+          "annexation_tile_cap_bonus": 15,
+          "annexation_ratio_reduction": 0.375
         },
         "architect": {
           "growth_multiplier": 1.25
@@ -403,8 +409,8 @@
       "occupation_overlay_alpha": 0.5,
       "occupation_supply_penalty_per_tile": 4.0,
       "occupation_exhaustion_per_tile": 0.15,
-      "annexation_exhaustion_weight": 0.3,
-      "annexation_supply_weight": 0.01,
+      "annexation_exhaustion_weight": 0.45,
+      "annexation_supply_weight": 0.015,
       "pressure_annexation_cap": 6,
       "skirmish_population_loss_ratio": 0.004,
       "battle_population_loss_ratio": 0.02,
@@ -415,8 +421,8 @@
       "exhaustion_supply_penalty_per_point": 0.005,
       "exhaustion_supply_min_multiplier": 0.25,
       "exhaustion_end_threshold": 90.0,
-      "full_annexation_tile_cap": 28,
-      "full_annexation_ratio": 2.25,
+      "full_annexation_tile_cap": 42,
+      "full_annexation_ratio": 3.375,
       "cold_war_stride_ticks": 12,
       "hot_war_recent_years": 0,
       "victory_development_gain_ratio": 0.05,
@@ -424,27 +430,29 @@
       "description": "War logistics: declaration frequency, per-polity supply income/decay, frontline strength factors, siege pressure thresholds, and exhaustion behavior for wars"
     },
     "relationships": {
-      "border_penalty_scale": 8.0,
-      "border_penalty_cap": 40.0,
-      "shared_culture_bonus": 25.0,
-      "different_culture_penalty": 5.0,
-      "shared_parent_penalty": 10.0,
-      "development_superiority_bonus": 40.0,
-      "development_peer_penalty": 12.0,
-      "population_center_advantage_penalty": 12.0,
+      "border_penalty_scale": 1.5,
+      "border_penalty_cap": 100.0,
+      "shared_culture_bonus": 20.0,
+      "different_culture_penalty": 10.0,
+      "shared_parent_penalty": 20.0,
+      "development_superiority_bonus": 15.0,
+      "development_peer_penalty": 10.0,
+      "population_center_advantage_penalty": 15.0,
       "population_center_gap_penalty": 3.0,
-      "shared_region_penalty": 14.0,
+      "shared_region_penalty": 20.0,
       "dominance_development_ratio": 2.0,
       "dominance_development_penalty": 15.0,
       "dominance_tile_ratio": 1.75,
       "dominance_tile_penalty": 10.0,
-      "grudge_penalty": 30.0,
-      "warmongering_penalty": 8.0,
-      "long_peace_bonus_per_year": 1.5,
-      "long_peace_bonus_cap": 40.0,
+      "grudge_penalty": 20.0,
+      "warmongering_penalty": 20.0,
+      "long_peace_bonus_per_year": 1.0,
+      "long_peace_bonus_cap": 25.0,
       "long_peace_grace_years": 2.0,
       "yearly_check_buckets": 16,
       "yearly_check_interval_years": 2,
+      "tolerance_opinion_bonus_scale": 50.0,
+      "vassal_overlord_bonus": 30.0,
       "description": "Base relationship modifiers for diplomacy and war declaration behavior"
     },
     "diaspora": {

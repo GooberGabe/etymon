@@ -10,15 +10,37 @@ from .time_evolution import apply_time_shift
 from .typology_blender import blend_typologies
 
 
+
 def _generate_language_name(metadata: Dict[str, object], base_name: str) -> str:
-    """Generate a formal language name based on metadata lineage."""
-    root_name = metadata.get("root_name", base_name)
-    generation = metadata.get("generation", 1)
-    
-    if generation == 1:
-        return root_name
+    """Generate a formal language name using culture adjectives and lineage."""
+    # Try to use constituent cultures if available
+    from src.world import world_data
+    cultures = metadata.get("constituent_cultures")
+    if isinstance(cultures, (list, tuple)) and cultures:
+        adjectives = []
+        for c in cultures:
+            adj = None
+            try:
+                # Use the world_data adjective logic
+                adj = world_data.MapRenderer._derive_culture_adjective(world_data.MapRenderer, c, c)
+            except Exception:
+                adj = c
+            if adj:
+                adjectives.append(adj)
+        if adjectives:
+            lang_name = "-".join(adjectives)
+        else:
+            lang_name = base_name
     else:
-        return f"{root_name} (Gen {generation})"
+        # Fallback: use base_name with adjective
+        try:
+            lang_name = world_data.MapRenderer._derive_culture_adjective(world_data.MapRenderer, base_name, base_name)
+        except Exception:
+            lang_name = base_name
+    generation = metadata.get("generation", 1)
+    if generation > 1:
+        lang_name = f"{lang_name} (Gen {generation})"
+    return lang_name
 
 
 def evolve_catalog(

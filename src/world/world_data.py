@@ -1,5 +1,3 @@
-"""World data structures for Etymon."""
-
 from typing import List, Tuple, Optional, Dict, Set, FrozenSet, Any, Sequence, Union, Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -153,6 +151,14 @@ CARDINAL_NAME_DESCRIPTORS: Tuple[str, ...] = (
 )
 
 DEFAULT_POLITY_NAMING_PATTERNS: Dict[str, Dict[str, Any]] = {
+    "itinerant_pluralist": {
+        "base_type": "cultural",
+        "templates": ("{base_adjective} Tribes", "{base_adjective} Tribes", "{base_adjective} Confederation"),
+    },
+    "itinerant_orthodox": {
+        "base_type": "cultural",
+        "templates": ("{base} Clan", "{base_adjective} Horde", "{base_adjective} Empire"),
+    },
     "tanistry_pluralist": {
         "base_type": "dynastic",
         "templates": ("{base} Clan", "House {base}", "House {base}"),
@@ -241,6 +247,7 @@ CULTURE_NAME_SUFFIXES: Tuple[str, ...] = (
 )
 
 # Cultural concern schema describing idea spectra (0.0=leftmost idea, 1.0=rightmost idea)
+
 CULTURAL_CONCERNS: Tuple[Dict[str, Any], ...] = (
     {
         "key": "succession",
@@ -264,7 +271,13 @@ CULTURAL_CONCERNS: Tuple[Dict[str, Any], ...] = (
         "key": "kinship_state",
         "label": "Kinship and the State",
         "ideas": ("Meritocratic", "Oligarchic", "Aristocratic"),
-        "initial_range": (0.5, 1.0),
+        "initial_range": (0.0, 1.0),
+    },
+    {
+        "key": "itinerance",
+        "label": "Itinerance (Sedentary vs Migratory)",
+        "ideas": ("Sedentary", "Mixed", "Migratory"),
+        "initial_range": (0.0, 1.0),
     },
 )
 
@@ -792,11 +805,11 @@ class World:
 
     def _ensure_culture_ideas(
         self,
-        culture: Optional[Culture],
-        heritage_override: Optional[Dict[str, float]] = None,
-        *,
-        jitter: float = 0.0,
-    ) -> None:
+                culture: Optional[Culture],
+                heritage_override: Optional[Dict[str, float]] = None,
+                *,
+                jitter: float = 0.0,
+            ) -> None:
         if culture is None:
             return
         if getattr(culture, 'ideas', None) is None:
@@ -1249,9 +1262,17 @@ class World:
                 overlord_universalism = (self._get_polity_idea_label(overlord, 'universalism') or '').lower()
                 if 'universal' in overlord_universalism and self._get_polity_rank_tier(overlord) >= 2:
                     return self._get_configured_naming_pattern('vassal_imperial')
+            # --- Itinerant/Pluralist/Orthodox pattern selection ---
+            itinerance = (self._get_polity_idea_label(polity, 'itinerance') or '').lower()
+            universalism = (self._get_polity_idea_label(polity, 'universalism') or '').lower()
+            # Only apply itinerant patterns to fully migratory polities
+            if 'migratory' in itinerance:
+                if 'plural' in universalism:
+                    return self._get_configured_naming_pattern('itinerant_pluralist')
+                else:
+                    return self._get_configured_naming_pattern('itinerant_orthodox')
             succession = (self._get_polity_idea_label(polity, 'succession') or '').lower()
             legitimacy = (self._get_polity_idea_label(polity, 'legitimacy') or '').lower()
-            universalism = (self._get_polity_idea_label(polity, 'universalism') or '').lower()
             successor_spawn = bool(getattr(polity, 'spawned_from_succession_crisis', False))
             if successor_spawn and 'plural' not in universalism:
                 key = 'successor_state'
@@ -6044,10 +6065,10 @@ class World:
             if tile.is_water or tile.population <= 0:
                 continue
             polity = self._get_polity(tile.polity_id) if tile.polity_id != -1 else None
-            
+
             # Calculate birth rate (always at least 1%)
             birth_rate = max(0.01, base_birth_rate)
-            
+
             # Heavy penalty for tiles exceeding development cap (overdevelopment crisis)
             overcap_birth_penalty = self.config.get('simulation.population.overcap_birth_penalty', 0.8) if self.config else 0.8
             dev_cap = self._calculate_development_cap(tile)
@@ -6056,7 +6077,7 @@ class World:
                 # Severe birth rate reduction for overdeveloped areas (infrastructure strain, pollution, etc.)
                 birth_reduction = min(overcap_birth_penalty, (overcap_ratio - 1.0) * overcap_birth_penalty)
                 birth_rate = birth_rate * (1.0 - birth_reduction)
-            
+
             # Overcrowding birth penalty - when population exceeds development capacity
             overcrowding_birth_penalty = self.config.get('simulation.population.overcrowding_birth_penalty', 0.8) if self.config else 0.8
             if tile.population > 0:
@@ -6072,17 +6093,28 @@ class World:
                     else:
                         overcrowding_birth_reduction = 0.0
                 birth_rate = birth_rate * (1.0 - overcrowding_birth_reduction)
-            
+
             # Calculate death rate
             death_rate = base_death_rate
-            
+
             # Climate death penalty (temperature extremes)
             temp_deviation = abs(tile.temperature - 0.6)  # Optimal temp around 0.6
-            climate_death_penalty = temp_deviation * climate_death_max
+            # Scale up penalty for extreme temps (closer to 0 or 1)
+            extreme_temp_penalty = 0.0
+            if tile.temperature < 0.15 or tile.temperature > 0.95:
+                extreme_temp_penalty = climate_death_max * 2.5  # Very high penalty for uninhabitable extremes
+            elif tile.temperature < 0.25 or tile.temperature > 0.85:
+                extreme_temp_penalty = climate_death_max * 1.5
+            climate_death_penalty = temp_deviation * climate_death_max + extreme_temp_penalty
             death_rate += climate_death_penalty
-            
+
             # Rainfall death penalty (drought or flood)
             rainfall_death_penalty = 0.0
+            extreme_rain_penalty = 0.0
+            if tile.rainfall < 0.15 or tile.rainfall > 0.95:
+                extreme_rain_penalty = rainfall_death_max * 2.5
+            elif tile.rainfall < 0.25 or tile.rainfall > 0.85:
+                extreme_rain_penalty = rainfall_death_max * 1.5
             if tile.rainfall < rainfall_min:
                 # Drought penalty
                 drought_severity = (rainfall_min - tile.rainfall) / rainfall_min
@@ -6091,9 +6123,12 @@ class World:
                 # Flood penalty (less severe than drought)
                 flood_severity = (tile.rainfall - rainfall_max) / (1.0 - rainfall_max)
                 rainfall_death_penalty = flood_severity * rainfall_death_max * 0.5
-            
-            death_rate += rainfall_death_penalty
-            
+            death_rate += rainfall_death_penalty + extreme_rain_penalty
+
+            # Additional hard penalty for tiles that are both extremely cold/hot and extremely dry/wet
+            if (tile.temperature < 0.15 or tile.temperature > 0.95) and (tile.rainfall < 0.15 or tile.rainfall > 0.95):
+                death_rate += 0.10  # Additive hard penalty for truly uninhabitable tiles
+
             # Overcrowding death penalty - when population exceeds development
             if tile.population > 0 and tile.development > 0:
                 overcrowding_ratio = tile.population / tile.development
@@ -6102,7 +6137,7 @@ class World:
                     overcrowding_severity = overcrowding_ratio - 1.0
                     overcrowding_death_penalty = min(0.05, overcrowding_severity * overcrowding_severity * 0.05)
                     death_rate += overcrowding_death_penalty
-            
+
             # Development bonus - reduce death rate for well-developed areas
             if tile.population > 0 and tile.development > tile.population * dev_threshold_ratio:
                 # Calculate development ratio above threshold (25% = 1.25)
@@ -6111,20 +6146,20 @@ class World:
                 death_reduction = min(dev_death_reduction, (dev_excess_ratio - 1.0) * dev_death_reduction)
                 death_rate = death_rate * (1.0 - death_reduction)
             death_rate *= self._get_trait_value(polity, 'JUST', 'death_rate_multiplier', 1.0)
-            
+
             # If death rate is 0, still have a 1-in-3 chance of losing 1 population
             if death_rate == 0.0 and tile.population > 0:
                 import random
                 if random.random() < (1.0 / 3.0):
                     # Set death rate to cause exactly 1 population loss
                     death_rate = birth_rate + (1.0 / tile.population)
-            
+
             # Calculate net growth rate
             net_growth_rate = birth_rate - death_rate
-            
+
             # Calculate population change with fractional handling for small populations
             raw_population_change = tile.population * net_growth_rate
-            
+
             # For small populations, use probabilistic rounding to avoid stagnation
             if abs(raw_population_change) < 1.0 and tile.population > 0:
                 import random
@@ -6136,10 +6171,10 @@ class World:
                     population_change = int(raw_population_change)
             else:
                 population_change = int(raw_population_change)
-            
+
             # Store death count for migration calculations
             tile.last_tick_deaths = max(0, int(tile.population * death_rate))
-            
+
             # Apply population change
             old_pop = tile.population
             tile.population = max(0, tile.population + population_change)
@@ -6216,14 +6251,22 @@ class World:
             temp_penalty = temp_deviation * temp_penalty_severity
             climate_modifier *= (1.0 - temp_penalty)
             
-            # Rainfall penalty for too low or too high
-            if tile.rainfall < rain_optimal_min:
+            # Stronger penalty for low rainfall (<0.25), mild penalty for high rainfall (>0.85)
+            if tile.rainfall < 0.25:
+                # Steep penalty as rainfall approaches 0
+                rain_penalty = ((0.25 - tile.rainfall) / 0.25) ** 1.5 * rain_penalty_severity * 2.0
+                climate_modifier *= (1.0 - min(0.95, rain_penalty))
+            elif tile.rainfall > 0.85:
+                # Mild penalty for very high rainfall
+                rain_penalty = ((tile.rainfall - 0.85) / 0.15) * rain_penalty_severity * 0.5
+                climate_modifier *= (1.0 - min(0.5, rain_penalty))
+            elif tile.rainfall < rain_optimal_min:
                 rain_deficit = rain_optimal_min - tile.rainfall
                 rain_penalty = rain_deficit * rain_penalty_severity
                 climate_modifier *= (1.0 - rain_penalty)
             elif tile.rainfall > rain_optimal_max:
                 rain_excess = tile.rainfall - rain_optimal_max
-                rain_penalty = rain_excess * rain_penalty_severity * 0.5  # Less severe than drought
+                rain_penalty = rain_excess * rain_penalty_severity * 0.5
                 climate_modifier *= (1.0 - rain_penalty)
 
             if getattr(tile, 'river_flux', 0.0) >= river_flux_threshold:
@@ -6286,6 +6329,52 @@ class World:
             
             # Ensure minimum is 0 (no hard cap - development can exceed cap, just can't increase further)
             tile.development = max(0.0, tile.development)
+
+    def _calculate_environmental_suitability(self, tile) -> float:
+        """Calculate environmental suitability for a single tile (0.0-1.0)."""
+        # Config values
+        temp_penalty_severity = self.config.get('simulation.development.temperature_penalty_severity', 0.9) if self.config else 0.9
+        rain_penalty_severity = self.config.get('simulation.development.rainfall_penalty_severity', 0.7) if self.config else 0.7
+        rainfall_optimal_min = self.config.get('simulation.development.rainfall_optimal_min', 0.3) if self.config else 0.3
+        rainfall_optimal_max = self.config.get('simulation.development.rainfall_optimal_max', 0.7) if self.config else 0.7
+        river_bonus = self.config.get('simulation.development.river_bonus', 0.1) if self.config else 0.1
+        river_dryness_multiplier = self.config.get('simulation.development.river_dryness_multiplier', 0.6) if self.config else 0.6
+        coastal_bonus = self.config.get('simulation.development.coastal_bonus', 0.1) if self.config else 0.1
+        river_flux_threshold = self.config.get('world.rivers.min_flux', 0.12) if self.config else 0.12
+
+        # Temperature suitability
+        temp = getattr(tile, 'temperature', 0.5)
+        temp_dist = abs(temp - 0.5) * 2
+        temp_suit = 1.0 - (temp_dist ** 2) * temp_penalty_severity
+
+        # Rainfall suitability
+        rain = getattr(tile, 'rainfall', 0.5)
+        if rain < 0.25:
+            rain_suit = 1.0 - min(0.95, ((0.25 - rain) / 0.25) ** 1.5 * rain_penalty_severity * 2.0)
+        elif rain > 0.85:
+            rain_suit = 1.0 - min(0.5, ((rain - 0.85) / 0.15) * rain_penalty_severity * 0.5)
+        elif rain < rainfall_optimal_min:
+            rain_suit = 1.0 - ((rainfall_optimal_min - rain) / rainfall_optimal_min) * rain_penalty_severity
+        elif rain > rainfall_optimal_max:
+            rain_suit = 1.0 - ((rain - rainfall_optimal_max) / (1.0 - rainfall_optimal_max + 1e-6)) * rain_penalty_severity
+        else:
+            rain_suit = 1.0
+
+        # River bonus (for dry tiles)
+        river_flux = getattr(tile, 'river_flux', 0.0)
+        river_suit = 1.0
+        if river_flux >= river_flux_threshold:
+            drought_bonus = max(0.0, rainfall_optimal_min - rain)
+            river_suit += river_bonus + drought_bonus * river_dryness_multiplier
+
+        # Coast bonus
+        coast_suit = 1.0
+        if hasattr(self, '_is_coastal_tile') and self._is_coastal_tile(getattr(tile, 'index', -1)):
+            coast_suit += coastal_bonus
+
+        # Combine
+        env_suit = temp_suit * rain_suit * river_suit * coast_suit
+        return max(0.0, min(1.0, env_suit))
     
     def _calculate_destination_potential(
         self,
@@ -6293,36 +6382,78 @@ class World:
         tile_idx: Optional[int] = None,
         *,
         population_center_lookup: Optional[Set[int]] = None,
+        origin_population: Optional[float] = None,
     ) -> float:
         """Calculate destination potential based on development ratio and recent deaths."""
         if tile.is_water:
             return 0.0
         
-        # Get config values
+        # --- Itinerance-based DP weighting ---
         dev_ratio_factor = self.config.get('simulation.migration.development_ratio_factor', 100) if self.config else 100
+        dev_migration_bonus = self.config.get('simulation.migration.development_migration_bonus', 50) if self.config else 50
+        river_dp_bonus = self.config.get('simulation.migration.river_dp_bonus', 12) if self.config else 12
+        coastal_dp_bonus = self.config.get('simulation.migration.coastal_dp_bonus', 15) if self.config else 15
+        dominant_culture_name = self._get_tile_majority_culture(tile)
+        itinerance = 0.25
+        if dominant_culture_name:
+            culture_obj = self._find_culture_by_name(dominant_culture_name)
+            if culture_obj:
+                self._ensure_culture_ideas(culture_obj)
+                itinerance = culture_obj.ideas.get("itinerance", 0.25)
+                label = self._idea_label_for_value("itinerance", itinerance)
+                if label:
+                    itinerance_label = label
+                else:
+                    itinerance_label = "Sedentary"
+            else:
+                itinerance_label = "Migratory"
+        else:
+            itinerance_label = "Migratory"
+        if itinerance_label == "Mixed":
+            dev_ratio_factor *= 0.5
+        elif itinerance_label == "Migratory":
+            dev_ratio_factor *= 0.2
+
         death_penalty_factor = self.config.get('simulation.migration.death_penalty_factor', 100) if self.config else 100
         overcrowding_penalty_factor = self.config.get('simulation.migration.overcrowding_penalty_factor', 200) if self.config else 200
-        dev_migration_bonus = self.config.get('simulation.migration.development_migration_bonus', 50) if self.config else 50
         dev_threshold_ratio = self.config.get('simulation.population.development_threshold_ratio', 1.25) if self.config else 1.25
         rainfall_optimal_min = self.config.get('simulation.development.rainfall_optimal_min', 0.3) if self.config else 0.3
         river_flux_threshold = self.config.get('world.rivers.min_flux', 0.12) if self.config else 0.12
-        river_dp_bonus = self.config.get('simulation.migration.river_dp_bonus', 12) if self.config else 12
-        coastal_dp_bonus = self.config.get('simulation.migration.coastal_dp_bonus', 15) if self.config else 15
-        coastal_dp_bonus = self.config.get('simulation.migration.coastal_dp_bonus', 15) if self.config else 15
-        pop_center_overcrowding_multiplier = self.config.get(
-            'simulation.migration.population_center_overcrowding_penalty_multiplier',
-            0.6,
-        ) if self.config else 0.6
-        pop_center_dp_scaling = self.config.get(
-            'simulation.migration.population_center_dp_bonus_scaling',
-            0.8,
-        ) if self.config else 0.8
-        pop_center_dp_max_extra = self.config.get(
-            'simulation.migration.population_center_dp_bonus_max_multiplier',
-            1.5,
-        ) if self.config else 1.5
-        
-        potential = 50.0  # Start with base potential
+        pop_center_overcrowding_multiplier = self.config.get('simulation.migration.population_center_overcrowding_penalty_multiplier', 0.6) if self.config else 0.6
+        pop_center_dp_scaling = self.config.get('simulation.migration.population_center_dp_bonus_scaling', 0.8) if self.config else 0.8
+        pop_center_dp_max_extra = self.config.get('simulation.migration.population_center_dp_bonus_max_multiplier', 1.5) if self.config else 1.5
+
+        potential = 50.0
+        # Less populated DP bonus/malus for Mixed/Migratory, now scaled by environmental suitability and population differential
+        less_populated_bonus = 0.0
+        env_suit = self._calculate_environmental_suitability(tile)
+        if itinerance_label in ("Mixed", "Migratory") and origin_population is not None:
+            candidate_pop = tile.population if tile.population > 0 else 1
+            origin_pop = origin_population if origin_population > 0 else 1
+            pop_diff = candidate_pop - origin_pop
+            pop_diff_ratio = pop_diff / max(candidate_pop, origin_pop, 1)
+            # Strong malus for higher population, bonus for lower
+            if itinerance_label == "Mixed":
+                # Malus up to -48, bonus up to +24, scaled by env_suit
+                if pop_diff > 0:
+                    less_populated_bonus = -48.0 * min(1.0, pop_diff_ratio) * env_suit
+                else:
+                    less_populated_bonus = 24.0 * min(1.0, -pop_diff_ratio) * env_suit
+            else:
+                # Malus up to -108, bonus up to +54, scaled by env_suit
+                if pop_diff > 0:
+                    less_populated_bonus = -108.0 * min(1.0, pop_diff_ratio) * env_suit
+                else:
+                    less_populated_bonus = 54.0 * min(1.0, -pop_diff_ratio) * env_suit
+        elif itinerance_label in ("Mixed", "Migratory"):
+            # Fallback: old logic if origin_population not provided
+            pop = tile.population if tile.population > 0 else 1
+            pop_scale = 100.0
+            pop_factor = max(0.0, 1.0 - min(1.0, pop / pop_scale))
+            if itinerance_label == "Mixed":
+                less_populated_bonus = 24.0 * pop_factor * env_suit
+            else:
+                less_populated_bonus = 54.0 * pop_factor * env_suit
 
         if tile_idx is None:
             tile_idx = self._find_tile_index_by_identity(tile)
@@ -6336,27 +6467,24 @@ class World:
         # Development to population ratio (higher is better)
         if tile.population > 0:
             dev_ratio = tile.development / tile.population
-            
             if dev_ratio >= 1.0:
                 # Good infrastructure, linear bonus
                 potential += dev_ratio * dev_ratio_factor
             else:
                 # Overcrowding penalty - exponential punishment that gets very severe
                 overcrowding_severity = (1.0 - dev_ratio)  # 0.0 = no overcrowding, 1.0 = no infrastructure
-                # More aggressive exponential penalty for extreme overcrowding
                 import math
-                if overcrowding_severity > 0.5:  # Very severe overcrowding (pop > 2x dev)
-                    # Cubic scaling for extreme cases
+                if overcrowding_severity > 0.5:
                     overcrowding_penalty = math.pow(overcrowding_severity, 3) * overcrowding_penalty_factor * 1.5
                 else:
-                    # Quadratic scaling for moderate overcrowding
                     overcrowding_penalty = math.pow(overcrowding_severity, 2) * overcrowding_penalty_factor
+                # No special multiplier for Mixed/Migratory
                 if is_population_center:
                     overcrowding_penalty *= pop_center_overcrowding_multiplier
                 potential -= overcrowding_penalty
         else:
-            # Empty tiles have good appeal for overcrowded populations
-            potential += dev_ratio_factor * 0.8
+            # Empty tiles have good appeal for overcrowded populations, now scaled by environmental suitability
+            potential += dev_ratio_factor * 0.5 * env_suit
         
         # Penalty for recent deaths (people avoid places where many died)
         if hasattr(tile, 'last_tick_deaths') and tile.population > 0:
@@ -6373,11 +6501,20 @@ class World:
         
         # Population center bonus - established settlements are more attractive
         population_center_bonus = self.config.get('simulation.migration.population_center_dp_bonus', 25) if self.config else 25
+        # Adjust population center DP bonus by itinerance label
         if is_population_center:
             dev_ratio = tile.development / max(1, tile.population)
             bonus_increase = max(0.0, dev_ratio - 1.0) * pop_center_dp_scaling
             bonus_increase = min(bonus_increase, pop_center_dp_max_extra)
-            potential += population_center_bonus * (1.0 + bonus_increase)
+            if itinerance_label == "Mixed":
+                # Apply only 40% of the bonus for Mixed
+                potential += population_center_bonus * 0.4 * (1.0 + bonus_increase)
+            elif itinerance_label == "Migratory":
+                # No bonus for Migratory
+                pass
+            else:
+                # Full bonus for Sedentary
+                potential += population_center_bonus * (1.0 + bonus_increase)
         
         # Heavy penalty for tiles exceeding development cap (overdevelopment)
         overcap_penalty = self.config.get('simulation.migration.overcap_dp_penalty', 150) if self.config else 150
@@ -6389,16 +6526,11 @@ class World:
             penalty_severity = math.pow(overcap_ratio - 1.0, 2)  # Quadratic growth
             potential -= penalty_severity * overcap_penalty
 
-        river_flux = getattr(tile, 'river_flux', 0.0)
-        if river_flux >= river_flux_threshold:
-            drought_bonus = max(0.0, rainfall_optimal_min - tile.rainfall)
-            potential += river_dp_bonus * (1.0 + drought_bonus * 2.0)
-
-        if tile_idx is not None and self._is_coastal_tile(tile_idx):
-            potential += coastal_dp_bonus
+        # River and coast bonuses are now handled in environmental suitability
         
         potential = self._apply_polity_tolerance_dp_modifier(tile, potential)
-        return min(100.0, max(-50.0, potential))  # Allow negative potential for very bad areas
+        potential += less_populated_bonus
+        return min(100.0, max(-50.0, potential))
 
     def _calculate_destination_potential_array(self, population_center_lookup: Set[int]) -> np.ndarray:
         """Vectorized destination potential for all tiles (read-only, no side effects)."""
@@ -6417,9 +6549,47 @@ class World:
         potential = np.full(n, 50.0, dtype=float)
 
         dev_ratio_factor = self.config.get('simulation.migration.development_ratio_factor', 100) if self.config else 100
+        dev_migration_bonus = self.config.get('simulation.migration.development_migration_bonus', 50) if self.config else 50
+        river_dp_bonus = self.config.get('simulation.migration.river_dp_bonus', 12) if self.config else 12
+        coastal_dp_bonus = self.config.get('simulation.migration.coastal_dp_bonus', 15) if self.config else 15
+        # For each tile, get dominant culture itinerance label
+        itinerance_labels = []
+        for t in self.tiles:
+            dominant_culture_name = self._get_tile_majority_culture(t)
+            if dominant_culture_name:
+                culture_obj = self._find_culture_by_name(dominant_culture_name)
+                if culture_obj:
+                    self._ensure_culture_ideas(culture_obj)
+                    itinerance = culture_obj.ideas.get("itinerance", 0.25)
+                    l = self._idea_label_for_value("itinerance", itinerance)
+                    if l:
+                        label = l
+                    else:
+                        label = "Sedentary"
+                else:
+                    label = "Migratory"
+            else:
+                label = "Migratory"
+            itinerance_labels.append(label)
+        # Adjust weights by itinerance label (vectorized)
+        dev_ratio_factors = np.array([
+            dev_ratio_factor * (0.2 if l == "Migratory" else 0.5 if l == "Mixed" else 1.0)
+            for l in itinerance_labels
+        ])
+        dev_migration_bonuses = np.array([
+            dev_migration_bonus * (0.2 if l == "Migratory" else 0.5 if l == "Mixed" else 1.0)
+            for l in itinerance_labels
+        ])
+        river_dp_bonuses = np.array([
+            river_dp_bonus * (2.5 if l == "Migratory" else 1.5 if l == "Mixed" else 1.0)
+            for l in itinerance_labels
+        ])
+        coastal_dp_bonuses = np.array([
+            coastal_dp_bonus * (2.5 if l == "Migratory" else 1.5 if l == "Mixed" else 1.0)
+            for l in itinerance_labels
+        ])
         death_penalty_factor = self.config.get('simulation.migration.death_penalty_factor', 100) if self.config else 100
         overcrowding_penalty_factor = self.config.get('simulation.migration.overcrowding_penalty_factor', 200) if self.config else 200
-        dev_migration_bonus = self.config.get('simulation.migration.development_migration_bonus', 50) if self.config else 50
         dev_threshold_ratio = self.config.get('simulation.population.development_threshold_ratio', 1.25) if self.config else 1.25
         population_center_bonus = self.config.get('simulation.migration.population_center_dp_bonus', 25) if self.config else 25
         pop_center_overcrowding_multiplier = self.config.get('simulation.migration.population_center_overcrowding_penalty_multiplier', 0.6) if self.config else 0.6
@@ -6428,8 +6598,7 @@ class World:
         overcap_penalty = self.config.get('simulation.migration.overcap_dp_penalty', 150) if self.config else 150
         rainfall_optimal_min = self.config.get('simulation.development.rainfall_optimal_min', 0.3) if self.config else 0.3
         river_flux_threshold = self.config.get('world.rivers.min_flux', 0.12) if self.config else 0.12
-        river_dp_bonus = self.config.get('simulation.migration.river_dp_bonus', 12) if self.config else 12
-        coastal_dp_bonus = self.config.get('simulation.migration.coastal_dp_bonus', 15) if self.config else 15
+
 
         safe_pop = np.maximum(pop, 1.0)
         dev_ratio = dev / safe_pop
@@ -6441,11 +6610,12 @@ class World:
         penalty = np.zeros(n, dtype=float)
         penalty[moderate_mask] = (overcrowding_severity[moderate_mask] ** 2) * overcrowding_penalty_factor
         penalty[severe_mask] = (overcrowding_severity[severe_mask] ** 3) * overcrowding_penalty_factor * 1.5
+        # No special multiplier for Mixed/Migratory
         penalty[is_pop_center] *= pop_center_overcrowding_multiplier
         potential -= penalty
 
         well_dev = (pop > 0) & (dev_ratio >= 1.0)
-        potential[well_dev] += dev_ratio_factor * dev_ratio[well_dev]
+        potential[well_dev] += dev_ratio_factors[well_dev] * dev_ratio[well_dev]
 
         with np.errstate(divide='ignore', invalid='ignore'):
             death_penalty = (last_deaths / safe_pop) * death_penalty_factor
@@ -6454,13 +6624,22 @@ class World:
 
         dev_excess_ratio = np.where(pop > 0, dev_ratio / dev_threshold_ratio, 0.0)
         excess = np.maximum(0.0, dev_excess_ratio - 1.0)
-        migration_bonus = np.minimum(excess * dev_migration_bonus, dev_migration_bonus)
+        migration_bonus = np.minimum(excess * dev_migration_bonuses, dev_migration_bonuses)
         potential += migration_bonus
 
         if population_center_bonus != 0:
             dev_ratio_pc = dev_ratio
             bonus_increase = np.clip(np.maximum(0.0, dev_ratio_pc - 1.0) * pop_center_dp_scaling, 0.0, pop_center_dp_max_extra)
-            potential[is_pop_center] += population_center_bonus * (1.0 + bonus_increase[is_pop_center])
+            # Adjust population center DP bonus by itinerance label (vectorized)
+            for i in range(n):
+                if is_pop_center[i]:
+                    label = itinerance_labels[i]
+                    if label == "Mixed":
+                        potential[i] += population_center_bonus * 0.4 * (1.0 + bonus_increase[i])
+                    elif label == "Migratory":
+                        pass  # No bonus
+                    else:
+                        potential[i] += population_center_bonus * (1.0 + bonus_increase[i])
 
         dev_caps = np.fromiter((self._calculate_development_cap(t) for t in self.tiles), dtype=float, count=n)
         overcap_mask = dev > dev_caps
@@ -6472,11 +6651,64 @@ class World:
         river_mask = river_flux >= river_flux_threshold
         if np.any(river_mask):
             drought_bonus = np.maximum(0.0, rainfall_optimal_min - rainfall[river_mask])
-            potential[river_mask] += river_dp_bonus * (1.0 + drought_bonus * 2.0)
+            potential[river_mask] += river_dp_bonuses[river_mask] * (1.0 + drought_bonus * 2.0)
 
         coastal_mask = np.fromiter((self._is_coastal_tile(i) for i in range(n)), dtype=bool, count=n)
         if np.any(coastal_mask):
-            potential[coastal_mask] += coastal_dp_bonus
+            potential[coastal_mask] += coastal_dp_bonuses[coastal_mask]
+        # Environmental suitability (vectorized)
+        temp_penalty_severity = self.config.get('simulation.development.temperature_penalty_severity', 0.9) if self.config else 0.9
+        rain_penalty_severity = self.config.get('simulation.development.rainfall_penalty_severity', 0.7) if self.config else 0.7
+        rainfall_optimal_min = self.config.get('simulation.development.rainfall_optimal_min', 0.3) if self.config else 0.3
+        rainfall_optimal_max = self.config.get('simulation.development.rainfall_optimal_max', 0.7) if self.config else 0.7
+        river_bonus = self.config.get('simulation.development.river_bonus', 0.1) if self.config else 0.1
+        river_dryness_multiplier = self.config.get('simulation.development.river_dryness_multiplier', 0.6) if self.config else 0.6
+        coastal_bonus = self.config.get('simulation.development.coastal_bonus', 0.1) if self.config else 0.1
+        # Temperature suitability
+        temp = np.array([getattr(t, 'temperature', 0.5) for t in self.tiles], dtype=float)
+        temp_dist = np.abs(temp - 0.5) * 2
+        temp_suit = 1.0 - (temp_dist ** 2) * temp_penalty_severity
+        # Rainfall suitability (strong penalty for <0.25, mild for >0.85)
+        rain = rainfall
+        rain_suit = np.ones(n, dtype=float)
+        rain_very_low = rain < 0.25
+        rain_very_high = rain > 0.85
+        rain_low = (rain >= 0.25) & (rain < rainfall_optimal_min)
+        rain_high = (rain <= 0.85) & (rain > rainfall_optimal_max)
+        # Steep penalty for very low rainfall
+        rain_suit[rain_very_low] = 1.0 - np.minimum(0.95, ((0.25 - rain[rain_very_low]) / 0.25) ** 1.5 * rain_penalty_severity * 2.0)
+        # Mild penalty for very high rainfall
+        rain_suit[rain_very_high] = 1.0 - np.minimum(0.5, ((rain[rain_very_high] - 0.85) / 0.15) * rain_penalty_severity * 0.5)
+        # Standard penalties for moderate deviations
+        rain_suit[rain_low] = 1.0 - ((rainfall_optimal_min - rain[rain_low]) / rainfall_optimal_min) * rain_penalty_severity
+        rain_suit[rain_high] = 1.0 - ((rain[rain_high] - rainfall_optimal_max) / (1.0 - rainfall_optimal_max + 1e-6)) * rain_penalty_severity
+        # River bonus (for dry tiles)
+        river_suit = np.ones(n, dtype=float)
+        river_mask = river_flux >= river_flux_threshold
+        if np.any(river_mask):
+            drought_bonus = np.maximum(0.0, rainfall_optimal_min - rainfall[river_mask])
+            river_suit[river_mask] += river_bonus + drought_bonus * river_dryness_multiplier
+        # Coast bonus
+        coast_suit = np.ones(n, dtype=float)
+        if np.any(coastal_mask):
+            coast_suit[coastal_mask] += coastal_bonus
+        # Combine
+        env_suit = np.clip(temp_suit * rain_suit * river_suit * coast_suit, 0.0, 1.0)
+
+        # Less populated DP bonus for Mixed/Migratory (vectorized, now scaled by env_suit)
+        pop_scale = 100.0
+        pop_factor = np.maximum(0.0, 1.0 - np.minimum(1.0, pop / pop_scale))
+        less_populated_bonuses = np.zeros(n, dtype=float)
+        for i, l in enumerate(itinerance_labels):
+            if l == "Mixed":
+                less_populated_bonuses[i] = 24.0 * pop_factor[i] * env_suit[i]  # Was 8.0
+            elif l == "Migratory":
+                less_populated_bonuses[i] = 54.0 * pop_factor[i] * env_suit[i]  # Was 18.0
+        potential += less_populated_bonuses
+
+        # Empty tile bonus (for unpopulated tiles), now scaled by environmental suitability
+        empty_mask = pop <= 0
+        potential[empty_mask] += dev_ratio_factors[empty_mask] * 0.5 * env_suit[empty_mask]
 
         potential[is_water] = 0.0
 
@@ -6786,15 +7018,33 @@ class World:
             ):
                 continue
             dp_start = time.perf_counter() if profile_enabled else None
-            current_dp = get_destination_potential(tile_idx)
+            # Pass origin population to DP calculation for population differential logic
+            current_dp = self._calculate_destination_potential(
+                tile,
+                tile_idx=tile_idx,
+                population_center_lookup=population_center_lookup,
+                origin_population=tile.population
+            )
             
             # Skip if destination potential is high enough (not desperate to leave)
             if current_dp >= dp_threshold:
-                if dp_start is not None:
-                    dp_elapsed += time.perf_counter() - dp_start
-                # Debug: uncomment to see why tiles aren't migrating
-                # print(f"Tile {tile_idx}: DP {current_dp:.1f} >= threshold {dp_threshold}, not desperate enough to migrate")
-                continue
+                # For Mixed/Migratory, allow major migration check even if DP is high
+                dominant_culture_name = self._get_tile_majority_culture(tile)
+                itinerance_label = "Sedentary"
+                if dominant_culture_name:
+                    culture_obj = self._find_culture_by_name(dominant_culture_name)
+                    if culture_obj:
+                        self._ensure_culture_ideas(culture_obj)
+                        itin = culture_obj.ideas.get("itinerance", 0.25)
+                        label = self._idea_label_for_value("itinerance", itin)
+                        if label:
+                            itinerance_label = label
+                if itinerance_label not in ("Mixed", "Migratory"):
+                    if dp_start is not None:
+                        dp_elapsed += time.perf_counter() - dp_start
+                    # Debug: uncomment to see why tiles aren't migrating
+                    # print(f"Tile {tile_idx}: DP {current_dp:.1f} >= threshold {dp_threshold}, not desperate enough to migrate")
+                    continue
             
             # Evaluate all neighbors and find the best migration destinations
             neighbor_indices = tile.neighbors.copy()
@@ -6813,7 +7063,12 @@ class World:
                 if neighbor.is_water:
                     continue
                     
-                neighbor_dp = get_destination_potential(neighbor_idx)
+                neighbor_dp = self._calculate_destination_potential(
+                    self.tiles[neighbor_idx],
+                    tile_idx=neighbor_idx,
+                    population_center_lookup=population_center_lookup,
+                    origin_population=tile.population
+                )
                 
                 # Calculate DP differential and apply polity reluctance penalties
                 dp_diff = neighbor_dp - current_dp
@@ -6837,16 +7092,36 @@ class World:
                 if dp_diff > effective_threshold:  # Significant difference
                     # Calculate migration amount - higher rates for desperate situations
                     base_migration_factor = min(migration_rate_max, dp_diff / 100)
-                    
-                    # Amplify migration for severely overcrowded areas but limit the multiplier
+
+                    # --- Itinerance integration ---
+                    # Get dominant culture for the tile
+                    dominant_culture_name = self._get_tile_majority_culture(tile)
+                    itinerance = 0.25  # Default baseline
+                    if dominant_culture_name:
+                        culture_obj = self._find_culture_by_name(dominant_culture_name)
+                        if culture_obj:
+                            self._ensure_culture_ideas(culture_obj)
+                            itinerance = culture_obj.ideas.get("itinerance", 0.25)
+                    # New scaling: nonlinear, up to 50% at high itinerance, low end nearly unchanged
+                    # At itinerance=0.25 (baseline), scale=1.0; at itinerance=1.0, scale=2.0 (for up to 50% eligible)
+                    # Use a smoothstep curve for a gentle ramp-up
+                    def itinerance_migration_scale(itin):
+                        # Clamp to [0,1]
+                        x = max(0.0, min(1.0, (itin - 0.25) / 0.75))
+                        # Smoothstep: 3x^2 - 2x^3
+                        return 1.0 + (3 * x**2 - 2 * x**3)  # 1.0 to 2.0
+                    scale = itinerance_migration_scale(itinerance)
+                    itinerance_label = self._idea_label_for_value("itinerance", itinerance)
+                    migratory_flat_boost = 0.15 if itinerance_label == "Migratory" else 0.0
                     if is_severely_overcrowded:
                         overcrowding_multiplier = min(2.0, tile.population / max(1, tile.development))
-                        migration_factor = base_migration_factor * overcrowding_multiplier
+                        migration_factor = base_migration_factor * overcrowding_multiplier * (scale + migratory_flat_boost)
                     else:
-                        migration_factor = base_migration_factor
-                    
+                        migration_factor = base_migration_factor * (scale + migratory_flat_boost)
+                    # Cap: at high itinerance, allow up to 50% of population to move
+                    max_total_migration = 0.5 if scale > 1.99 else (0.25 if is_severely_overcrowded else 0.15)
                     migrants = int(tile.population * migration_factor)
-                    
+
                     if migrants > 0:
                         destination_candidates.append((neighbor_idx, dp_diff, migrants))
             
@@ -6877,11 +7152,39 @@ class World:
                     # Get config values for polity expansion
                     control_threshold = self.config.get('simulation.migration.polity_expansion_control_threshold', 50) if self.config else 50
                     pop_threshold = self.config.get('simulation.migration.polity_expansion_population_threshold', 10) if self.config else 10
-                    
+
                     # Perform migration
                     tile.population -= migrants
                     self.tiles[neighbor_idx].population += migrants
-                    
+
+                    # --- Development transfer for regular migration (itinerance-based) ---
+                    # Determine itinerance label for the migrating population
+                    dominant_culture_name = self._get_tile_majority_culture(tile)
+                    itinerance_label = "Sedentary"
+                    if dominant_culture_name:
+                        culture_obj = self._find_culture_by_name(dominant_culture_name)
+                        if culture_obj:
+                            self._ensure_culture_ideas(culture_obj)
+                            itin = culture_obj.ideas.get("itinerance", 0.25)
+                            label = self._idea_label_for_value("itinerance", itin)
+                            if label:
+                                itinerance_label = label
+                    if itinerance_label == "Migratory":
+                        transfer_ratio = self.config.get('simulation.migration.itinerant_migration_development_transfer_ratio', 0.7) if self.config else 0.7
+                    elif itinerance_label == "Mixed":
+                        transfer_ratio = self.config.get('simulation.migration.mixed_migration_development_transfer_ratio', 0.5) if self.config else 0.5
+                    else:
+                        transfer_ratio = self.config.get('simulation.migration.sedentary_migration_development_transfer_ratio', 0.3) if self.config else 0.3
+                    loss_percent = self.config.get('simulation.migration.migration_development_loss_percent', 0.25) if self.config else 0.25
+                    dev_transfer = migrants * transfer_ratio
+                    dev_net_loss = dev_transfer * loss_percent
+                    dev_loss = dev_transfer
+                    dev_gain = dev_transfer - dev_net_loss
+                    if dev_loss > 0:
+                        tile.development = max(0.0, tile.development - dev_loss)
+                    if dev_gain > 0:
+                        self.tiles[neighbor_idx].development += dev_gain
+
                     # Apply control effects from migration
                     self._apply_migration_control_effects(
                         tile,
@@ -6890,11 +7193,11 @@ class World:
                         source_idx=tile_idx,
                         dest_idx=neighbor_idx
                     )
-                    
+
                     # Check for polity expansion
                     source_tile = tile
                     dest_tile = self.tiles[neighbor_idx]
-                    
+
                     # Conditions for polity expansion:
                     # 1. Source tile is controlled by a polity (polity_id >= 0)
                     # 2. Source tile has sufficient control (>=50%)
@@ -6904,7 +7207,7 @@ class World:
                         source_tile.control_level >= control_threshold and
                         dest_tile.polity_id == -1 and
                         dest_tile.population >= pop_threshold):
-                        
+
                         # Assimilate destination tile into source polity
                         previous_polity = dest_tile.polity_id
                         dest_tile.polity_id = source_tile.polity_id
@@ -6923,13 +7226,13 @@ class World:
                         )
                         self._on_tile_polity_changed(neighbor_idx, previous_polity, dest_tile.polity_id)
                         self._apply_control_alignment_cap(neighbor_idx)
-                        
+
                         # Update polity's tile list for border rendering
                         if source_tile.polity_id < len(self.polities):
                             polity = self.polities[source_tile.polity_id]
                             if neighbor_idx not in polity.tile_indices:
                                 polity.tile_indices.append(neighbor_idx)
-                        
+
                         # Expansion events are intentionally silent in debug logs to reduce noise
             if dp_start is not None:
                 dp_elapsed += time.perf_counter() - dp_start
@@ -7007,6 +7310,32 @@ class World:
                 continue
             tile.population -= migrants
             self.tiles[neighbor_idx].population += migrants
+
+            # --- Development transfer for baseline migration (if enabled) ---
+            # Always initialize itinerance and itinerance_label to safe defaults
+            itinerance = 0.25  # Default baseline
+            itinerance_label = "Sedentary"
+            dominant_culture_name = self._get_tile_majority_culture(tile)
+            if dominant_culture_name:
+                culture_obj = self._find_culture_by_name(dominant_culture_name)
+                if culture_obj:
+                    self._ensure_culture_ideas(culture_obj)
+                    itin = culture_obj.ideas.get("itinerance", 0.25)
+                    label = self._idea_label_for_value("itinerance", itin)
+                    if label:
+                        itinerance_label = label
+                    itinerance = itin
+            # Use a single config value for baseline migration dev transfer, or fallback to sedentary ratio
+            transfer_ratio = self.config.get('simulation.migration.sedentary_migration_development_transfer_ratio', 0.25) if self.config else 0.25
+            loss_percent = self.config.get('simulation.migration.migration_development_loss_percent', 0.2) if self.config else 0.2
+            dev_transfer = migrants * transfer_ratio
+            dev_net_loss = dev_transfer * loss_percent
+            dev_loss = dev_transfer
+            dev_gain = dev_transfer - dev_net_loss
+            if dev_loss > 0:
+                tile.development = max(0.0, tile.development - dev_loss)
+            if dev_gain > 0:
+                self.tiles[neighbor_idx].development += dev_gain
 
             self._apply_migration_control_effects(
                 tile,
@@ -7096,12 +7425,25 @@ class World:
                 tile.development < tile._calculate_development_cap(tile) * 0.5 if hasattr(tile, '_calculate_development_cap') else 
                 tile.development < self._calculate_development_cap(tile) * 0.5):
                 return  # Must have at least 50 population and be at 50% of development cap
-                
-            # Low chance of exodus migration per tick (very rare)
+
+            # --- Itinerance integration for exodus frequency ---
+            dominant_culture_name = self._get_tile_majority_culture(tile)
+            itinerance = 0.25  # Default baseline
+            if dominant_culture_name:
+                culture_obj = self._find_culture_by_name(dominant_culture_name)
+                if culture_obj:
+                    self._ensure_culture_ideas(culture_obj)
+                    itinerance = culture_obj.ideas.get("itinerance", 0.25)
+            # Scale exodus chance: 0.25 = baseline, <0.25 = less, >0.25 = more
             exodus_chance = self.config.get('simulation.migration.exodus_migration_chance', 0.02) if self.config else 0.02
-            if random.random() > exodus_chance:
+            exodus_chance_scaled = exodus_chance * (itinerance / 0.25 if 0.25 > 0 else 1.0)
+            # Threshold-based boost for 'Migratory' societies
+            itinerance_label = self._idea_label_for_value("itinerance", itinerance)
+            if itinerance_label == "Migratory":
+                exodus_chance_scaled += 0.03  # Flat +3% chance
+            if random.random() > exodus_chance_scaled:
                 return
-            trigger_reason = f"opportunity (chance={exodus_chance:.2f})"
+            trigger_reason = f"opportunity (chance={exodus_chance_scaled:.2f})"
         else:
             # Ensure forced exodus still respects minimum population requirement
             if tile.population < mass_death_min_pop:
@@ -7147,18 +7489,21 @@ class World:
                     dest_tile,
                     tile_idx=dest_idx,
                     population_center_lookup=population_center_lookup,
+                    origin_population=tile.population
                 )
             dp_diff = dest_dp - current_dp
+            # Apply linear distance penalty
+            distance = self._calculate_tile_distance(tile_idx, dest_idx) if hasattr(self, '_calculate_tile_distance') else abs(tile_idx - dest_idx)
+            distance_penalty_scale = self.config.get('simulation.migration.exodus_distance_penalty_scale', 1.0) if self.config else 1.0
+            dp_diff -= distance * distance_penalty_scale
             if cross_polity_penalty > 0 and self._is_cross_polity_migration(tile, dest_tile):
                 dp_diff -= cross_polity_penalty
             if diff_region_bonus and dest_tile.region_id != source_region_id:
                 dp_diff += diff_region_bonus
-            
             # Apply elevation penalty for uphill migration from higher elevations
             elevation_penalty_threshold = self.config.get('simulation.migration.elevation_penalty_threshold', 0.4) if self.config else 0.4
             elevation_penalty_factor = self.config.get('simulation.migration.elevation_penalty_factor', 50.0) if self.config else 50.0
             elevation_penalty_exponent = self.config.get('simulation.migration.elevation_penalty_curve_exponent', 2.0) if self.config else 2.0
-            
             if tile.elevation > elevation_penalty_threshold and dest_tile.elevation > tile.elevation:
                 elevation_diff = dest_tile.elevation - tile.elevation
                 # Only penalize upward migration, using exponential curve for higher elevations
@@ -7183,7 +7528,20 @@ class World:
             max_ratio = max(min_ratio, 0.2)
         if max_ratio < min_ratio:
             max_ratio = min_ratio
-        migration_ratio = random.uniform(min_ratio, max_ratio)
+        # New scaling: nonlinear, up to 50% at high itinerance, low end nearly unchanged
+        def itinerance_exodus_scale(itin):
+            x = max(0.0, min(1.0, (itin - 0.25) / 0.75))
+            return 1.0 + (3 * x**2 - 2 * x**3)  # 1.0 to 2.0
+        scale = itinerance_exodus_scale(itinerance)
+        min_ratio *= scale
+        max_ratio *= scale
+        # Threshold-based boost for 'Migratory' societies
+        if itinerance_label == "Migratory":
+            min_ratio += 0.05
+            max_ratio += 0.05
+        # Cap: at high itinerance, allow up to 50% of population to move
+        max_cap = 0.5
+        migration_ratio = min(max_cap, random.uniform(min_ratio, max_ratio))
         migrants = max(10, int(tile.population * migration_ratio))
         migrants = min(migrants, tile.population - 10)
         
@@ -7193,12 +7551,33 @@ class World:
             tile.population -= migrants
             self.tiles[best_destination].population += migrants
 
-            # Transfer a share of development with the migrating population
+            # Transfer a share of development with the migrating population (itinerance-based)
             ratio = migrants / max(1, pre_migration_population)
-            dev_transfer = min(pre_migration_development, pre_migration_development * ratio * dev_transfer_ratio)
-            if dev_transfer > 0:
-                tile.development = max(0.0, tile.development - dev_transfer)
-                self.tiles[best_destination].development += dev_transfer
+            # Determine itinerance label for the migrating population
+            dominant_culture_name = self._get_tile_majority_culture(tile)
+            itinerance_label = "Sedentary"
+            if dominant_culture_name:
+                culture_obj = self._find_culture_by_name(dominant_culture_name)
+                if culture_obj:
+                    self._ensure_culture_ideas(culture_obj)
+                    itin = culture_obj.ideas.get("itinerance", 0.25)
+                    label = self._idea_label_for_value("itinerance", itin)
+                    if label:
+                        itinerance_label = label
+            if itinerance_label == "Migratory":
+                transfer_ratio = self.config.get('simulation.migration.itinerant_migration_development_transfer_ratio', 0.7) if self.config else 0.7
+            elif itinerance_label == "Mixed":
+                transfer_ratio = self.config.get('simulation.migration.mixed_migration_development_transfer_ratio', 0.5) if self.config else 0.5
+            else:
+                transfer_ratio = self.config.get('simulation.migration.sedentary_migration_development_transfer_ratio', 0.3) if self.config else 0.3
+            loss_percent = self.config.get('simulation.migration.migration_development_loss_percent', 0.25) if self.config else 0.25
+            dev_transfer = min(pre_migration_development, pre_migration_development * ratio * transfer_ratio)
+            dev_loss = dev_transfer * loss_percent
+            dev_gain = dev_transfer - dev_loss
+            if dev_loss > 0:
+                tile.development = max(0.0, tile.development - dev_loss)
+            if dev_gain > 0:
+                self.tiles[best_destination].development += dev_gain
                 # Respect destination development cap softly by trimming overflow
                 dest_cap = self._calculate_development_cap(self.tiles[best_destination])
                 if self.tiles[best_destination].development > dest_cap:
@@ -7247,7 +7626,17 @@ class World:
         
         # Get config values
         influence_factor = self.config.get('simulation.control.migration_influence_factor', 0.5) if self.config else 0.5
-        
+        # --- Itinerance integration for migration influence ---
+        dominant_culture_name = self._get_tile_majority_culture(source_tile)
+        itinerance = 0.25  # Default baseline
+        if dominant_culture_name:
+            culture_obj = self._find_culture_by_name(dominant_culture_name)
+            if culture_obj:
+                self._ensure_culture_ideas(culture_obj)
+                itinerance = culture_obj.ideas.get("itinerance", 0.25)
+        itinerance_scale = itinerance / 0.25 if 0.25 > 0 else 1.0
+        influence_factor *= itinerance_scale
+
         # Calculate migration influence based on source control level
         before = dest_tile.control_level
         if source_tile.control_level >= 50:
@@ -9570,7 +9959,8 @@ class World:
         dominance_tile_ratio = self._relationship_setting('dominance_tile_ratio', 0.0)
         dominance_tile_penalty = self._relationship_setting('dominance_tile_penalty', 0.0)
         if relationship.shared_border_tiles > 0:
-            border_penalty = -min(border_penalty_cap, border_penalty_scale)
+            # Penalty is linear in number of shared border tiles, capped at border_penalty_cap
+            border_penalty = -min(border_penalty_cap, border_penalty_scale * relationship.shared_border_tiles)
             base += border_penalty
         observer_culture = getattr(observer, 'primary_culture', None)
         subject_culture = getattr(subject, 'primary_culture', None)
@@ -9631,11 +10021,18 @@ class World:
         if diplomat_bonus:
             base += diplomat_bonus
 
+        # Flat vassal-overlord bonus (configurable)
+        vassal_overlord_bonus = self._relationship_setting('vassal_overlord_bonus', 30.0)
+        # Vassal's opinion of overlord
         if getattr(observer, 'suzerain_id', -1) == subject.id:
+            base += vassal_overlord_bonus
             if self._polity_has_idea_label(subject, 'legitimacy', 'divine right'):
                 base += 20.0
             if self._polity_has_idea_label(subject, 'kinship_state', 'aristocratic'):
                 base += 20.0
+        # Overlord's opinion of vassal
+        if getattr(subject, 'suzerain_id', -1) == observer.id:
+            base += vassal_overlord_bonus
         return self._clamp_relation_score(base)
 
     def _compute_long_peace_bonus(self, relationship: Relationship) -> float:
@@ -9655,9 +10052,16 @@ class World:
 
     def _get_current_relation(self, observer_id: int, subject_id: int, relationship: Relationship) -> float:
         base = self._calculate_base_relation(observer_id, subject_id, relationship)
+        # Tolerance opinion bonus re-enabled, modulated by config
+        subject = self._get_polity(subject_id)
+        tolerance_bonus_scale = self._relationship_setting('tolerance_opinion_bonus_scale', 50.0)
+        tolerance_bonus = 0.0
+        if subject is not None:
+            tolerance = self._get_polity_tolerance(subject)
+            tolerance_bonus = tolerance_bonus_scale * (tolerance)
         modifier = relationship.ticking_modifiers.get(observer_id, 0.0)
         peace_bonus = self._compute_long_peace_bonus(relationship)
-        return self._clamp_relation_score(base + modifier + peace_bonus)
+        return self._clamp_relation_score(base + tolerance_bonus + modifier + peace_bonus)
 
     def _get_active_war_count(self, polity_id: int) -> int:
         if polity_id < 0:
@@ -9784,37 +10188,8 @@ class World:
             break
 
     def _check_high_relation_annexation(self, relationship: Relationship) -> None:
-        self._increment_workload_counter('annexation_checks')
-        if relationship.status != "peace" or not relationship.met:
-            return
-        polity_a = self._get_polity(relationship.polity_a)
-        polity_b = self._get_polity(relationship.polity_b)
-        if not polity_a or not polity_b:
-            return
-        if not getattr(polity_a, 'is_active', True) or not getattr(polity_b, 'is_active', True):
-            return
-        culture_a = getattr(polity_a, 'primary_culture', None)
-        culture_b = getattr(polity_b, 'primary_culture', None)
-        if not culture_a or culture_a != culture_b:
-            return
-        relation_ab = self._get_current_relation(polity_a.id, polity_b.id, relationship)
-        relation_ba = self._get_current_relation(polity_b.id, polity_a.id, relationship)
-        if relation_ab < 100.0 or relation_ba < 100.0:
-            return
-        dev_a = self._calculate_polity_development_value(polity_a.id)
-        dev_b = self._calculate_polity_development_value(polity_b.id)
-        if math.isclose(dev_a, dev_b, abs_tol=1e-3):
-            return
-        winner = polity_a if dev_a > dev_b else polity_b
-        loser = polity_b if dev_a > dev_b else polity_a
-        if not winner.tile_indices or not loser.tile_indices:
-            return
-        annexed = self._perform_peaceful_annexation(winner.id, loser.id, 50.0)
-        if annexed:
-            self._log_event(
-                'diplomacy',
-                f"{winner.name} diplomatically annexed {loser.name} after forming a perfect union"
-            )
+        # Peaceful annexation is disabled.
+        return
 
     def _apply_grudge_penalty(self, relationship: Relationship) -> None:
         penalty = self._relationship_setting('grudge_penalty', 40.0)
@@ -9980,6 +10355,11 @@ class World:
                     yearly_start = time.perf_counter() if profile_enabled else 0.0
                     self._attempt_relation_based_war_declaration(relationship)
                     self._check_high_relation_annexation(relationship)
+                    # --- BEGIN: Cultural Tolerance Opinion Bonus ---
+                    # Polity A's opinion of B is increased by up to +50 based on B's tolerance
+                    # Tolerance bonus is now only applied as a flat bonus in _get_current_relation
+                    pass
+                    # --- END: Cultural Tolerance Opinion Bonus ---
                     if profile_enabled:
                         yearly_checks_elapsed += time.perf_counter() - yearly_start
         finally:
@@ -10828,13 +11208,13 @@ class World:
     def _calculate_integration_cost(self, overlord: Optional[Polity], subject: Optional[Polity]) -> float:
         """Compute integration cost based on overlord-to-vassal development ratio (clamped 50-200)."""
         if not overlord or not subject:
-            return 200.0
+            return 400.0  # doubled from 200.0
         overlord_dev = max(1.0, self._calculate_polity_development_value(overlord.id))
         subject_dev = max(1.0, self._calculate_polity_development_value(subject.id))
-        # Stronger overlord -> lower cost; equal size -> 200; weaker overlord -> clamp at 200.
+        # Stronger overlord -> lower cost; equal size -> 400; weaker overlord -> clamp at 400.
         ratio = subject_dev / overlord_dev
-        cost = 200.0 * ratio
-        return max(50.0, min(200.0, cost))
+        cost = 400.0 * ratio  # doubled from 200.0
+        return max(100.0, min(400.0, cost))  # doubled min/max
 
     def _apply_vassal_integration_burst(self, overlord_id: int, delta: float) -> None:
         """Apply a one-time integration level change to all direct vassals of an overlord."""
